@@ -1,3 +1,16 @@
+"""Velocity-aware manifold fitting.
+
+This module contains the merged manifold fitting implementation used by the
+simulation and RNA-velocity notebooks. The public API is intentionally small:
+
+* :func:`select_adaptive_local_pca_dimension` chooses a local PCA dimension
+  from a covariance spectrum.
+* :func:`reduce_global_dimension` optionally reduces high-dimensional state and
+  velocity matrices before fitting.
+* :class:`VelocityManifoldFitter` fits denoised cell states and projected
+  velocities with either adaptive or globally fixed local tangent dimension.
+"""
+
 from __future__ import annotations
 
 import numpy as np
@@ -12,6 +25,24 @@ def select_adaptive_local_pca_dimension(
     d_max=None,
     eps=1e-12,
 ):
+    """Choose a local PCA dimension from eigenvalues.
+
+    The selected dimension is the smallest value whose cumulative explained
+    variance reaches ``variance_threshold``, clipped to ``[d_min, d_max]``.
+    If the local covariance is numerically zero, the function returns
+    ``d_min``.
+
+    :param eigvals: Eigenvalues from a local covariance matrix.
+    :type eigvals: array-like
+    :param float variance_threshold: Cumulative variance target in ``(0, 1]``.
+    :param int d_min: Minimum allowed local dimension. Defaults to ``2``.
+    :param d_max: Maximum allowed local dimension. If ``None``, use all
+        available eigenvalues.
+    :type d_max: int or None
+    :param float eps: Numerical tolerance for zero total variance.
+    :returns: Selected local PCA dimension.
+    :rtype: int
+    """
     eigvals = np.asarray(eigvals, dtype=float)
     eigvals = np.maximum(eigvals, 0.0)
     eigvals = np.sort(eigvals)[::-1]
@@ -31,6 +62,24 @@ def select_adaptive_local_pca_dimension(
 
 
 def reduce_global_dimension(X, V, n_components=30, random_state=0):
+    """Reduce state and velocity matrices with a shared PCA basis.
+
+    PCA is fit on ``X``. The state matrix is transformed with
+    ``pca.fit_transform(X)``, and the velocity matrix is projected into the
+    same basis by ``V @ pca.components_.T``. If the input dimension is already
+    less than or equal to ``n_components``, the original arrays are returned
+    with ``pca=None``.
+
+    :param X: State matrix with shape ``(n_cells, n_features)``.
+    :type X: array-like
+    :param V: Velocity matrix with the same shape as ``X``.
+    :type V: array-like
+    :param int n_components: Target global PCA dimension. Defaults to ``30``.
+    :param random_state: Random seed forwarded to scikit-learn PCA.
+    :returns: ``(X_reduced, V_reduced, pca)``.
+    :rtype: tuple
+    :raises ValueError: If ``X`` and ``V`` have different shapes.
+    """
     X = np.asarray(X, dtype=float)
     V = np.asarray(V, dtype=float)
     if X.shape != V.shape:
@@ -46,12 +95,88 @@ def reduce_global_dimension(X, V, n_components=30, random_state=0):
 
 
 class VelocityManifoldFitter:
+    """Velocity-aware manifold fitter.
+
+    The fitter takes a state matrix ``Y`` and matching velocity matrix ``W``.
+    It builds a velocity-aware neighbor graph, estimates local tangent spaces
+    with weighted PCA, projects velocities onto those tangent spaces, and
+    updates positions by a normal-only default rule.
+
+    Parameters are grouped by how often they should be touched:
+
+    **High-priority tuning parameters**
+        ``d_mode``, ``adaptive_variance_threshold``, ``adaptive_d_min``,
+        ``k``, ``T``, ``eta_g``, and ``theta``. These are the main knobs to
+        tune across datasets.
+
+    **Default modes**
+        ``update_mode`` is passed to :meth:`fit` and defaults to
+        ``"normal_only"``. ``bandwidth_mode`` defaults to ``"variable"``.
+        These should usually stay fixed unless a diagnostic sweep suggests
+        otherwise.
+
+    **Low-priority parameters**
+        ``global_d``, ``use_PCA``, ``PCA_dim``, ``gamma``, ``beta``,
+        ``kappa``, ``cv``, ``max_step_frac``, ``h``, cosine conventions, and
+        neighbor recomputation controls. These are useful for diagnostics but
+        are not expected to need frequent tuning.
+
+    :param Y: State matrix with shape ``(n_cells, n_features)``.
+    :type Y: array-like
+    :param W: Velocity matrix with the same shape as ``Y``.
+    :type W: array-like
+    :param str d_mode: Local PCA dimension mode. ``"adaptive"`` selects a
+        local dimension per point; ``"global"`` uses ``global_d`` everywhere.
+        Defaults to ``"adaptive"``.
+    :param float adaptive_variance_threshold: Explained-variance threshold for
+        adaptive local dimensions. Defaults to ``0.8``.
+    :param int adaptive_d_min: Minimum adaptive local dimension. Defaults to
+        ``2``.
+    :param adaptive_d_max: Optional maximum adaptive local dimension.
+    :type adaptive_d_max: int or None
+    :param int k: Number of neighbors used for local fitting. Defaults to
+        ``25``.
+    :param int T: Number of fitting iterations. Defaults to ``5``.
+    :param float eta_g: Normal correction step size. Smaller values are often
+        more stable. Defaults to ``0.45``.
+    :param float theta: Strength of velocity-aware neighbor scoring. Smaller
+        values are usually more stable. Defaults to ``0.1``.
+    :param str bandwidth_mode: Kernel bandwidth mode, either ``"variable"`` or
+        ``"fixed"``. Defaults to ``"variable"``.
+    :param bool recompute_neighbors: Whether to rebuild neighbors during
+        fitting. Defaults to ``False``.
+    :param float gamma: Sharpness of velocity-aware neighbor scoring.
+    :param float beta: Radial kernel exponent.
+    :param float kappa: Directional kernel strength.
+    :param float cv: Tangential velocity transport strength for
+        ``update_mode="original"``. Defaults to ``0.0``.
+    :param float max_step_frac: Per-iteration step cap as a fraction of local
+        bandwidth.
+    :param int global_d: Fixed local PCA dimension used when
+        ``d_mode="global"``. This is a low-priority diagnostic parameter.
+    :param bool use_PCA: Whether to globally reduce ``Y`` and ``W`` before
+        fitting. Defaults to ``True``.
+    :param int PCA_dim: Global PCA dimension used when ``use_PCA=True``.
+        Defaults to ``30``.
+    :param float h: Fixed bandwidth used when ``bandwidth_mode="fixed"``.
+    :param bool use_abs_cos: Use absolute cosine in velocity-aware distance.
+    :param bool weight_use_abs_cos: Use absolute cosine in directional kernel
+        weights.
+    :param random_state: Random seed for NumPy and PCA.
+    :param int candidate_mult: Multiplier for Euclidean candidate neighbors
+        before velocity-aware reranking.
+    :param int neighbor_update_freq: Neighbor recomputation frequency when
+        ``recompute_neighbors=True``.
+    :param float eps: Numerical tolerance.
+    :raises ValueError: If inputs or mode parameters are invalid.
+    """
+
     def __init__(
         self,
         Y,
         W,
         # Important tuning parameters
-        d=2,
+        d_mode="adaptive",
         adaptive_variance_threshold=0.8,
         adaptive_d_min=2,
         adaptive_d_max=None,
@@ -68,6 +193,9 @@ class VelocityManifoldFitter:
         kappa=1.0,
         cv=0.0,
         max_step_frac=0.2,
+        global_d=2,
+        use_PCA=True,
+        PCA_dim=30,
         h=0.8,
         use_abs_cos=False,
         weight_use_abs_cos=True,
@@ -79,21 +207,38 @@ class VelocityManifoldFitter:
         if random_state is not None:
             np.random.seed(random_state)
 
-        self.Y = np.asarray(Y, dtype=float)
-        self.W = np.asarray(W, dtype=float)
+        self.Y_original = np.asarray(Y, dtype=float)
+        self.W_original = np.asarray(W, dtype=float)
 
-        if self.Y.shape != self.W.shape:
+        if self.Y_original.shape != self.W_original.shape:
             raise ValueError("Y and W must match shape")
+
+        self.use_PCA = bool(use_PCA)
+        self.PCA_dim = int(PCA_dim)
+        if self.PCA_dim < 1:
+            raise ValueError("PCA_dim must be at least 1")
+        if self.use_PCA:
+            self.Y, self.W, self.global_pca = reduce_global_dimension(
+                self.Y_original,
+                self.W_original,
+                n_components=self.PCA_dim,
+                random_state=random_state,
+            )
+        else:
+            self.Y = self.Y_original.copy()
+            self.W = self.W_original.copy()
+            self.global_pca = None
 
         self.n, self.D = self.Y.shape
         if self.n <= 1:
             raise ValueError("At least two points are required")
 
         self.k = min(int(k), self.n - 1)
-        self.d = d
+        self.d_mode = d_mode
         self.adaptive_variance_threshold = float(adaptive_variance_threshold)
         self.adaptive_d_min = int(adaptive_d_min)
         self.adaptive_d_max = None if adaptive_d_max is None else int(adaptive_d_max)
+        self.global_d = int(global_d)
         self.theta = float(theta)
         self.gamma = float(gamma)
         self.use_abs_cos = bool(use_abs_cos)
@@ -111,7 +256,7 @@ class VelocityManifoldFitter:
         self.neighbor_update_freq = int(neighbor_update_freq)
         self.eps = float(eps)
 
-        if self.d == "adaptive":
+        if self.d_mode == "adaptive":
             if not 0.0 < self.adaptive_variance_threshold <= 1.0:
                 raise ValueError("adaptive_variance_threshold must be in (0, 1]")
             if self.adaptive_d_min < 1 or self.adaptive_d_min > self.D:
@@ -120,10 +265,11 @@ class VelocityManifoldFitter:
                 self.adaptive_d_max < self.adaptive_d_min or self.adaptive_d_max > self.D
             ):
                 raise ValueError("adaptive_d_max must be between adaptive_d_min and the ambient dimension")
+        elif self.d_mode == "global":
+            if self.global_d < 1 or self.global_d > self.D:
+                raise ValueError("global_d must be between 1 and the ambient dimension")
         else:
-            self.d = int(self.d)
-            if self.d < 1 or self.d > self.D:
-                raise ValueError("d must be between 1 and the ambient dimension, or 'adaptive'")
+            raise ValueError("d_mode must be 'adaptive' or 'global'")
         if self.bandwidth_mode not in {"variable", "fixed"}:
             raise ValueError("bandwidth_mode must be 'variable' or 'fixed'")
 
@@ -226,7 +372,7 @@ class VelocityManifoldFitter:
         self.bandwidths = h
 
     def _compute_local_tangent(self):
-        fixed_d = None if self.d == "adaptive" else self.d
+        fixed_d = None if self.d_mode == "adaptive" else self.global_d
         U_all = [] if fixed_d is None else np.zeros((self.n, self.D, fixed_d), dtype=float)
         P_all = np.zeros((self.n, self.D, self.D), dtype=float)
         local_dims = np.zeros(self.n, dtype=int)
@@ -289,6 +435,28 @@ class VelocityManifoldFitter:
         blend_lambda=0.0,
         return_dict=False,
     ):
+        """Run manifold fitting.
+
+        ``update_mode="normal_only"`` is the recommended default. It moves each
+        point only in the estimated normal direction and uses the tangent space
+        to project velocities. ``update_mode="original"`` retains the older
+        mean-shift plus tangential velocity transport update and is mainly
+        useful as a comparison mode.
+
+        :param str update_mode: ``"normal_only"`` or ``"original"``. Defaults
+            to ``"normal_only"``.
+        :param str velocity_mode: Velocity source for weights. One of
+            ``"projected"``, ``"raw"``, or ``"blend"``.
+        :param float blend_lambda: Blend amount used only when
+            ``velocity_mode="blend"``.
+        :param bool return_dict: If ``True``, return positions, velocities,
+            neighbors, weights, tangent projectors, local dimensions,
+            bandwidths, global PCA object, and iteration history.
+        :returns: Fitted positions, or a result dictionary when
+            ``return_dict=True``.
+        :rtype: numpy.ndarray or dict
+        :raises ValueError: If ``update_mode`` is invalid.
+        """
         if update_mode not in {"original", "normal_only"}:
             raise ValueError("update_mode must be 'original' or 'normal_only'")
 
@@ -338,6 +506,7 @@ class VelocityManifoldFitter:
                 "P": self.P,
                 "local_dims": self.local_dims,
                 "bandwidths": self.bandwidths,
+                "global_pca": self.global_pca,
                 "history": self.history,
             }
         return self.X

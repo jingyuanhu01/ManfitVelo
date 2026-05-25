@@ -1,7 +1,48 @@
 from __future__ import annotations
 
 import numpy as np
+from sklearn.decomposition import PCA
 from sklearn.neighbors import NearestNeighbors
+
+
+def select_adaptive_local_pca_dimension(
+    eigvals,
+    variance_threshold=0.8,
+    d_min=2,
+    d_max=None,
+    eps=1e-12,
+):
+    eigvals = np.asarray(eigvals, dtype=float)
+    eigvals = np.maximum(eigvals, 0.0)
+    eigvals = np.sort(eigvals)[::-1]
+
+    if d_max is None:
+        d_max = eigvals.size
+    d_max = min(int(d_max), eigvals.size)
+    d_min = min(max(int(d_min), 1), d_max)
+
+    total = float(np.sum(eigvals))
+    if total <= eps:
+        return d_min
+
+    cumulative = np.cumsum(eigvals) / total
+    d = int(np.searchsorted(cumulative, variance_threshold, side="left") + 1)
+    return min(max(d, d_min), d_max)
+
+
+def reduce_global_dimension(X, V, n_components=30, random_state=0):
+    X = np.asarray(X, dtype=float)
+    V = np.asarray(V, dtype=float)
+    if X.shape != V.shape:
+        raise ValueError("X and V must match shape")
+    n_components = min(int(n_components), X.shape[0], X.shape[1])
+    if X.shape[1] <= n_components:
+        return X, V, None
+
+    pca = PCA(n_components=n_components, random_state=random_state)
+    X_reduced = pca.fit_transform(X)
+    V_reduced = V @ pca.components_.T
+    return X_reduced, V_reduced, pca
 
 
 class VelocityManifoldFitter:
@@ -11,6 +52,9 @@ class VelocityManifoldFitter:
         W,
         # Important tuning parameters
         d=2,
+        adaptive_variance_threshold=0.8,
+        adaptive_d_min=2,
+        adaptive_d_max=None,
         k=25,
         T=5,
         eta_g=0.45,
@@ -46,7 +90,10 @@ class VelocityManifoldFitter:
             raise ValueError("At least two points are required")
 
         self.k = min(int(k), self.n - 1)
-        self.d = int(d)
+        self.d = d
+        self.adaptive_variance_threshold = float(adaptive_variance_threshold)
+        self.adaptive_d_min = int(adaptive_d_min)
+        self.adaptive_d_max = None if adaptive_d_max is None else int(adaptive_d_max)
         self.theta = float(theta)
         self.gamma = float(gamma)
         self.use_abs_cos = bool(use_abs_cos)
@@ -64,14 +111,26 @@ class VelocityManifoldFitter:
         self.neighbor_update_freq = int(neighbor_update_freq)
         self.eps = float(eps)
 
-        if self.d < 1 or self.d > self.D:
-            raise ValueError("d must be between 1 and the ambient dimension")
+        if self.d == "adaptive":
+            if not 0.0 < self.adaptive_variance_threshold <= 1.0:
+                raise ValueError("adaptive_variance_threshold must be in (0, 1]")
+            if self.adaptive_d_min < 1 or self.adaptive_d_min > self.D:
+                raise ValueError("adaptive_d_min must be between 1 and the ambient dimension")
+            if self.adaptive_d_max is not None and (
+                self.adaptive_d_max < self.adaptive_d_min or self.adaptive_d_max > self.D
+            ):
+                raise ValueError("adaptive_d_max must be between adaptive_d_min and the ambient dimension")
+        else:
+            self.d = int(self.d)
+            if self.d < 1 or self.d > self.D:
+                raise ValueError("d must be between 1 and the ambient dimension, or 'adaptive'")
         if self.bandwidth_mode not in {"variable", "fixed"}:
             raise ValueError("bandwidth_mode must be 'variable' or 'fixed'")
 
         self.X = self.Y.copy()
         self.U = None
         self.P = None
+        self.local_dims = None
         self.v = None
         self.neighbors = None
         self.weights = None
@@ -167,8 +226,10 @@ class VelocityManifoldFitter:
         self.bandwidths = h
 
     def _compute_local_tangent(self):
-        U_all = np.zeros((self.n, self.D, self.d), dtype=float)
+        fixed_d = None if self.d == "adaptive" else self.d
+        U_all = [] if fixed_d is None else np.zeros((self.n, self.D, fixed_d), dtype=float)
         P_all = np.zeros((self.n, self.D, self.D), dtype=float)
+        local_dims = np.zeros(self.n, dtype=int)
 
         for i in range(self.n):
             neigh = self.neighbors[i]
@@ -180,13 +241,30 @@ class VelocityManifoldFitter:
             C = 0.5 * (C + C.T)
 
             eigvals, eigvecs = np.linalg.eigh(C)
-            idx = np.argsort(eigvals)[::-1][: self.d]
+            order = np.argsort(eigvals)[::-1]
+            if fixed_d is None:
+                local_d = select_adaptive_local_pca_dimension(
+                    eigvals,
+                    variance_threshold=self.adaptive_variance_threshold,
+                    d_min=self.adaptive_d_min,
+                    d_max=self.adaptive_d_max,
+                    eps=self.eps,
+                )
+            else:
+                local_d = fixed_d
+
+            idx = order[:local_d]
             U = eigvecs[:, idx]
-            U_all[i] = U
+            if fixed_d is None:
+                U_all.append(U)
+            else:
+                U_all[i] = U
             P_all[i] = U @ U.T
+            local_dims[i] = local_d
 
         self.U = U_all
         self.P = P_all
+        self.local_dims = local_dims
 
     def _project_velocity(self, velocity=None):
         if velocity is None:
@@ -258,6 +336,7 @@ class VelocityManifoldFitter:
                 "weights": self.weights,
                 "U": self.U,
                 "P": self.P,
+                "local_dims": self.local_dims,
                 "bandwidths": self.bandwidths,
                 "history": self.history,
             }

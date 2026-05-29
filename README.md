@@ -134,6 +134,34 @@ Useful notebooks live in `notebooks/method_tests/`:
 - `ring_method_comparison.ipynb`
 - `s_curve_parameter_workflow.ipynb`
 - `rna_velocity_pca_manifold_fit.ipynb`
+- `s_curve_gradient_field_embedding.ipynb`
+- `protein_latent_gradient_pipeline.ipynb`
 
 Reference notebooks and older implementations are kept in
 `notebooks/reference_notebooks/` and `scripts/reference_implementations/`.
+
+## Position + Potential Experiments
+
+The current scalar-potential proof of concept compares position-only manifold
+fitting against manifold fitting with an estimated local gradient field. The
+gradient is estimated from the observed scalar potential by local ridge
+regression over neighborhoods, then passed to `VelocityManifoldFitter`.
+
+Two notebooks are the main entry points:
+
+- `notebooks/method_tests/s_curve_gradient_field_embedding.ipynb`: simulated
+  S-curve with noisy positions, noisy scalar potential, and known ground truth.
+- `notebooks/method_tests/protein_latent_gradient_pipeline.ipynb`: P450 protein
+  fitness landscape example, using measured `T50` as the scalar potential.
+
+The protein data come from the Nature Communications paper:
+
+> Ding, X., Zou, Z. & Brooks III, C.L. Deciphering protein evolution and
+> fitness landscapes with latent space models. Nature Communications 10, 5644
+> (2019). https://doi.org/10.1038/s41467-019-13633-0
+
+The repository does not commit the downloaded data files. To reproduce the
+protein notebook, download the supplementary data files from the paper into
+`data/protein_latent_paper/raw/`, then run
+`scripts/prepare_protein_latent_paper_data.py` to create the local processed
+files used by the notebook.

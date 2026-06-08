@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulation Vector Fields</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #171717;
+      --muted: #626262;
+      --line: #d8d8d8;
+      --panel: #f6f6f3;
+      --accent: #16615a;
+      --accent-2: #8f3f2b;
+      --bg: #fbfaf7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    main {
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    aside {
+      border-right: 1px solid var(--line);
+      padding: 24px;
+      background: #fff;
+    }
+    section {
+      padding: 24px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    label {
+      display: grid;
+      gap: 6px;
+      margin: 14px 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    select, input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 9px 10px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(360px, 1.2fr) minmax(300px, 0.8fr);
+      gap: 20px;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 16px;
+    }
+    canvas {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      display: block;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      cursor: grab;
+      touch-action: none;
+    }
+    canvas:active { cursor: grabbing; }
+    .spec {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #ededed;
+    }
+    .row span:first-child { color: var(--muted); }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fff;
+    }
+    .card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    @media (max-width: 900px) {
+      main, .layout { grid-template-columns: 1fr; }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <aside>
+      <h1>Simulation Vector Fields</h1>
+      <p>Small internal reference page for synthesizing the current simulation catalog. Python remains the source of truth for dataset generation.</p>
+
+      <label>
+        Field
+        <select id="field">
+          <option value="rotation">flat manifold, rotation field</option>
+          <option value="spiral">flat manifold, spiral field</option>
+          <option value="saddle">flat manifold, saddle field</option>
+          <option value="quadratic_source_sink">flat manifold, quadratic source sink field</option>
+          <option value="radial_source">flat manifold, radial source field</option>
+          <option value="radial_sink">flat manifold, radial sink field</option>
+          <option value="horizontal_shear">flat manifold, horizontal shear field</option>
+          <option value="sinusoidal">flat manifold, sinusoidal field</option>
+          <option value="s_curve_velocity_flow">s curve manifold, velocity flow field</option>
+          <option value="swiss_roll_velocity_flow">swiss roll manifold, velocity flow field</option>
+          <option value="half_sphere_velocity_flow">half sphere manifold, velocity flow field</option>
+          <option value="half_sphere_rotation">half sphere manifold, rotation field</option>
+          <option value="half_sphere_spiral">half sphere manifold, spiral field</option>
+          <option value="half_sphere_saddle">half sphere manifold, saddle field</option>
+          <option value="half_sphere_radial_source">half sphere manifold, radial source field</option>
+          <option value="half_sphere_radial_sink">half sphere manifold, radial sink field</option>
+          <option value="half_sphere_quadratic_source_sink">half sphere manifold, quadratic source sink field</option>
+        </select>
+      </label>
+      <label>
+        Position noise
+        <input id="positionNoise" type="number" min="0" max="5" step="0.05" value="0.3">
+      </label>
+      <label>
+        Velocity noise
+        <input id="velocityNoise" type="number" min="0" max="5" step="0.05" value="0.3">
+      </label>
+      <label>
+        Extra dimensions
+        <input id="extraDims" type="number" min="0" max="64" step="1" value="5">
+      </label>
+      <label>
+        Samples
+        <input id="samples" type="number" min="100" max="5000" step="100" value="1000">
+      </label>
+    </aside>
+
+    <section>
+      <div class="layout">
+        <div class="panel">
+          <h2 id="title"></h2>
+          <canvas id="preview" width="720" height="720"></canvas>
+        </div>
+        <div class="panel">
+          <h2>Generation Contract</h2>
+          <div class="spec" id="spec"></div>
+        </div>
+      </div>
+      <div class="cards">
+        <div class="card"><strong>flat manifold, rotation field</strong><p>Tangential field on an annulus: <code>[-y, x]</code>.</p></div>
+        <div class="card"><strong>flat manifold, spiral field</strong><p>Linear outward rotation: <code>[x - y, x + y]</code>.</p></div>
+        <div class="card"><strong>flat manifold, saddle field</strong><p>Rotated hyperbolic flow with eigenvalues <code>-1, +1</code>.</p></div>
+        <div class="card"><strong>flat manifold, quadratic source sink field</strong><p>Complex-square-style field: <code>[x^2 - y^2 - 4, 2xy]</code>.</p></div>
+        <div class="card"><strong>flat manifold, radial source field</strong><p>Outward radial field: <code>[x, y]</code>.</p></div>
+        <div class="card"><strong>flat manifold, radial sink field</strong><p>Inward radial field: <code>[-x, -y]</code>.</p></div>
+        <div class="card"><strong>flat manifold, horizontal shear field</strong><p>Horizontal shear by vertical position: <code>[y, 0]</code>.</p></div>
+        <div class="card"><strong>flat manifold, sinusoidal field</strong><p>Smooth periodic field: <code>[sin(pi y), cos(pi x)]</code>.</p></div>
+        <div class="card"><strong>s curve manifold, velocity flow field</strong><p>3D S-curve with tangent flow along the rolled coordinate.</p></div>
+        <div class="card"><strong>swiss roll manifold, velocity flow field</strong><p>3D Swiss roll with tangent flow along the spiral coordinate.</p></div>
+        <div class="card"><strong>half sphere manifold, velocity flow field</strong><p>Upper hemisphere with tangent rotation around the vertical axis.</p></div>
+        <div class="card"><strong>half sphere manifold, rotation field</strong><p>Tangent rotation around the vertical axis.</p></div>
+        <div class="card"><strong>half sphere manifold, spiral field</strong><p>Outward rotation projected onto the sphere tangent plane.</p></div>
+        <div class="card"><strong>half sphere manifold, saddle field</strong><p>Hyperbolic tangent field projected onto the upper hemisphere.</p></div>
+        <div class="card"><strong>half sphere manifold, radial source field</strong><p>Meridian-like outward source flow on the curved surface.</p></div>
+        <div class="card"><strong>half sphere manifold, radial sink field</strong><p>Meridian-like inward sink flow on the curved surface.</p></div>
+        <div class="card"><strong>half sphere manifold, quadratic source sink field</strong><p>Quadratic source/sink field projected onto the half-sphere.</p></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const fieldEl = document.querySelector("#field");
+    const positionNoiseEl = document.querySelector("#positionNoise");
+    const velocityNoiseEl = document.querySelector("#velocityNoise");
+    const extraDimsEl = document.querySelector("#extraDims");
+    const samplesEl = document.querySelector("#samples");
+    const titleEl = document.querySelector("#title");
+    const specEl = document.querySelector("#spec");
+    const canvas = document.querySelector("#preview");
+    const ctx = canvas.getContext("2d");
+
+    const catalog = {
+      rotation: {
+        label: "flat manifold, rotation field",
+        simulationName: "flat_manifold__rotation_vector_field",
+        manifold: "flat",
+        fieldName: "rotation",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_vector_fields.py",
+        module: "simulation/flat_manifold_vector_fields.py"
+      },
+      spiral: {
+        label: "flat manifold, spiral field",
+        simulationName: "flat_manifold__spiral_vector_field",
+        manifold: "flat",
+        fieldName: "spiral",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_vector_fields.py",
+        module: "simulation/flat_manifold_vector_fields.py"
+      },
+      saddle: {
+        label: "flat manifold, saddle field",
+        simulationName: "flat_manifold__saddle_vector_field",
+        manifold: "flat",
+        fieldName: "saddle",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_vector_fields.py",
+        module: "simulation/flat_manifold_vector_fields.py"
+      },
+      quadratic_source_sink: {
+        label: "flat manifold, quadratic source sink field",
+        simulationName: "flat_manifold__quadratic_source_sink_vector_field",
+        manifold: "flat",
+        fieldName: "quadratic_source_sink",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_vector_fields.py",
+        module: "simulation/flat_manifold_vector_fields.py"
+      },
+      radial_source: {
+        label: "flat manifold, radial source field",
+        simulationName: "flat_manifold__radial_source_vector_field",
+        manifold: "flat",
+        fieldName: "radial_source",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_vector_fields.py",
+        module: "simulation/flat_manifold_vector_fields.py"
+      },
+      radial_sink: {
+        label: "flat manifold, radial sink field",
+        simulationName: "flat_manifold__radial_sink_vector_field",
+        manifold: "flat",
+        fieldName: "radial_sink",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_vector_fields.py",
+        module: "simulation/flat_manifold_vector_fields.py"
+      },
+      horizontal_shear: {
+        label: "flat manifold, horizontal shear field",
+        simulationName: "flat_manifold__horizontal_shear_vector_field",
+        manifold: "flat",
+        fieldName: "horizontal_shear",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_vector_fields.py",
+        module: "simulation/flat_manifold_vector_fields.py"
+      },
+      sinusoidal: {
+        label: "flat manifold, sinusoidal field",
+        simulationName: "flat_manifold__sinusoidal_vector_field",
+        manifold: "flat",
+        fieldName: "sinusoidal",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_vector_fields.py",
+        module: "simulation/flat_manifold_vector_fields.py"
+      },
+      s_curve_velocity_flow: {
+        label: "s curve manifold, velocity flow field",
+        simulationName: "s_curve_manifold__velocity_flow_vector_field",
+        manifold: "s_curve",
+        fieldName: "velocity_flow",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      swiss_roll_velocity_flow: {
+        label: "swiss roll manifold, velocity flow field",
+        simulationName: "swiss_roll_manifold__velocity_flow_vector_field",
+        manifold: "swiss_roll",
+        fieldName: "velocity_flow",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      half_sphere_velocity_flow: {
+        label: "half sphere manifold, velocity flow field",
+        simulationName: "half_sphere_manifold__velocity_flow_vector_field",
+        manifold: "half_sphere",
+        fieldName: "velocity_flow",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      half_sphere_rotation: {
+        label: "half sphere manifold, rotation field",
+        simulationName: "half_sphere_manifold__rotation_vector_field",
+        manifold: "half_sphere",
+        fieldName: "rotation",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      half_sphere_spiral: {
+        label: "half sphere manifold, spiral field",
+        simulationName: "half_sphere_manifold__spiral_vector_field",
+        manifold: "half_sphere",
+        fieldName: "spiral",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      half_sphere_saddle: {
+        label: "half sphere manifold, saddle field",
+        simulationName: "half_sphere_manifold__saddle_vector_field",
+        manifold: "half_sphere",
+        fieldName: "saddle",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      half_sphere_radial_source: {
+        label: "half sphere manifold, radial source field",
+        simulationName: "half_sphere_manifold__radial_source_vector_field",
+        manifold: "half_sphere",
+        fieldName: "radial_source",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      half_sphere_radial_sink: {
+        label: "half sphere manifold, radial sink field",
+        simulationName: "half_sphere_manifold__radial_sink_vector_field",
+        manifold: "half_sphere",
+        fieldName: "radial_sink",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      half_sphere_quadratic_source_sink: {
+        label: "half sphere manifold, quadratic source sink field",
+        simulationName: "half_sphere_manifold__quadratic_source_sink_vector_field",
+        manifold: "half_sphere",
+        fieldName: "quadratic_source_sink",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      }
+    };
+
+    const viewport = {
+      yaw: -0.72,
+      pitch: 0.55,
+      zoom: 1,
+      dragging: false,
+      lastX: 0,
+      lastY: 0
+    };
+
+    function rand(seed) {
+      let x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
+    }
+
+    function point(i, n, field) {
+      const a = 2 * Math.PI * rand(i * 17 + 3);
+      const rBase = Math.sqrt(rand(i * 31 + 11));
+      let r = rBase;
+      if (field === "rotation") r = 0.3 + 0.7 * rBase;
+      let x = r * Math.cos(a);
+      let y = r * Math.sin(a);
+      let z = 0;
+      let vx = 0;
+      let vy = 0;
+      let vz = 0;
+
+      if (field === "rotation") {
+        vx = -y; vy = x;
+      } else if (field === "spiral") {
+        vx = x - y; vy = x + y;
+      } else if (field === "saddle") {
+        x = 2 * (2 * rand(i * 19 + 5) - 1);
+        y = 2 * (2 * rand(i * 23 + 7) - 1);
+        const c = Math.SQRT1_2;
+        const u = c * x + c * y;
+        const v = -c * x + c * y;
+        vx = c * (-u) - c * v;
+        vy = c * (-u) + c * v;
+        x /= 2; y /= 2; vx /= 2; vy /= 2;
+      } else if (field === "quadratic_source_sink") {
+        r = 1.2 * rBase;
+        x = r * Math.cos(a);
+        y = r * Math.sin(a);
+        vx = x * x - y * y - 0.45;
+        vy = 2 * x * y;
+      } else if (field === "radial_source") {
+        vx = x; vy = y;
+      } else if (field === "radial_sink") {
+        vx = -x; vy = -y;
+      } else if (field === "horizontal_shear") {
+        x = 2 * rand(i * 19 + 5) - 1;
+        y = 2 * rand(i * 23 + 7) - 1;
+        vx = y; vy = 0;
+      } else {
+        x = 2 * rand(i * 19 + 5) - 1;
+        y = 2 * rand(i * 23 + 7) - 1;
+        vx = Math.sin(Math.PI * y);
+        vy = Math.cos(Math.PI * x);
+      }
+
+      const positionNoise = Number(positionNoiseEl.value);
+      const velocityNoise = Number(velocityNoiseEl.value);
+      x += positionNoise * 0.35 * (rand(i * 41 + 13) - 0.5);
+      y += positionNoise * 0.35 * (rand(i * 43 + 17) - 0.5);
+      z += positionNoise * 0.35 * (rand(i * 59 + 29) - 0.5);
+      vx += velocityNoise * 0.35 * (rand(i * 47 + 19) - 0.5);
+      vy += velocityNoise * 0.35 * (rand(i * 53 + 23) - 0.5);
+      vz += velocityNoise * 0.35 * (rand(i * 61 + 31) - 0.5);
+      return { x, y, z, vx, vy, vz };
+    }
+
+    function halfSphereVector(x, y, z, fieldName) {
+      let ax;
+      let az;
+      if (fieldName === "velocity_flow" || fieldName === "rotation") {
+        ax = -z;
+        az = x;
+      } else if (fieldName === "spiral") {
+        ax = x - z;
+        az = x + z;
+      } else if (fieldName === "saddle") {
+        const c = Math.SQRT1_2;
+        const u = c * x + c * z;
+        const v = -c * x + c * z;
+        ax = c * (-u) - c * v;
+        az = c * (-u) + c * v;
+      } else if (fieldName === "radial_source") {
+        ax = x;
+        az = z;
+      } else if (fieldName === "radial_sink") {
+        ax = -x;
+        az = -z;
+      } else {
+        ax = x * x - z * z - 0.45;
+        az = 2 * x * z;
+      }
+
+      let vx = ax;
+      let vy = 0;
+      let vz = az;
+      const nx = x;
+      const ny = y + 0.28;
+      const nz = z;
+      const normalNorm = Math.hypot(nx, ny, nz) || 1;
+      const ux = nx / normalNorm;
+      const uy = ny / normalNorm;
+      const uz = nz / normalNorm;
+      const normalComponent = vx * ux + vy * uy + vz * uz;
+      vx -= normalComponent * ux;
+      vy -= normalComponent * uy;
+      vz -= normalComponent * uz;
+      return { vx, vy, vz };
+    }
+
+    function manifoldPoint(i, n, field) {
+      const u = rand(i * 17 + 3);
+      const h = 2 * rand(i * 23 + 7) - 1;
+      const positionNoise = Number(positionNoiseEl.value);
+      const velocityNoise = Number(velocityNoiseEl.value);
+      let x;
+      let y;
+      let z;
+      let vx;
+      let vy = 0;
+      let vz;
+
+      if (field === "s_curve_velocity_flow") {
+        const t = 3 * Math.PI * (u - 0.5);
+        x = Math.sin(t) * 0.72;
+        y = h * 0.55;
+        z = Math.sign(t || 1) * (Math.cos(t) - 1) * 0.42;
+        vx = Math.cos(t);
+        vz = -Math.sin(t) * Math.sign(t || 1);
+      } else if (field === "swiss_roll_velocity_flow") {
+        const t = 1.5 * Math.PI + 3 * Math.PI * u;
+        const rawX = t * Math.cos(t);
+        const rawZ = t * Math.sin(t);
+        x = rawX / 15;
+        y = h * 0.62;
+        z = rawZ / 15;
+        vx = (Math.cos(t) - t * Math.sin(t)) / 15;
+        vz = (Math.sin(t) + t * Math.cos(t)) / 15;
+      } else {
+        const theta = 2 * Math.PI * u;
+        const vertical = rand(i * 31 + 11);
+        const radius = Math.sqrt(1 - vertical * vertical);
+        x = radius * Math.cos(theta) * 0.78;
+        y = vertical * 0.78 - 0.28;
+        z = radius * Math.sin(theta) * 0.78;
+        const vector = halfSphereVector(x, y, z, catalog[field].fieldName);
+        vx = vector.vx;
+        vy = vector.vy;
+        vz = vector.vz;
+      }
+
+      const norm = Math.hypot(vx, vy, vz) || 1;
+      vx /= norm;
+      vy /= norm;
+      vz /= norm;
+
+      x += positionNoise * 0.18 * (rand(i * 41 + 13) - 0.5);
+      y += positionNoise * 0.18 * (rand(i * 43 + 17) - 0.5);
+      z += positionNoise * 0.18 * (rand(i * 59 + 29) - 0.5);
+      vx += velocityNoise * 0.18 * (rand(i * 47 + 19) - 0.5);
+      vy += velocityNoise * 0.18 * (rand(i * 53 + 23) - 0.5);
+      vz += velocityNoise * 0.18 * (rand(i * 61 + 31) - 0.5);
+
+      return { x, y, z, vx, vy, vz };
+    }
+
+    function project3d(x, y, z) {
+      const cosY = Math.cos(viewport.yaw);
+      const sinY = Math.sin(viewport.yaw);
+      const cosP = Math.cos(viewport.pitch);
+      const sinP = Math.sin(viewport.pitch);
+
+      const xr = x * cosY - z * sinY;
+      const zr = x * sinY + z * cosY;
+      const yr = y * cosP - zr * sinP;
+      const depth = y * sinP + zr * cosP;
+      const scale = viewport.zoom * 0.74 / (1.35 + 0.22 * depth);
+
+      return {
+        x: canvas.width * (0.5 + xr * scale),
+        y: canvas.height * (0.52 - yr * scale),
+        depth,
+        scale,
+      };
+    }
+
+    function sortedSamples(item, field, n) {
+      const samples = [];
+      for (let i = 0; i < n; i += 1) {
+        const p = item.dimension === 3 ? manifoldPoint(i, n, field) : point(i, n, field);
+        const start = item.dimension === 3
+          ? project3d(p.x, p.y, p.z)
+          : { x: canvas.width * (0.5 + p.x * 0.36), y: canvas.height * (0.5 - p.y * 0.36), scale: 1, depth: 0 };
+        samples.push({ i, p, start });
+      }
+      if (item.dimension === 3) {
+        samples.sort((a, b) => b.start.depth - a.start.depth);
+      }
+      return samples;
+    }
+
+    function drawArrow(x0, y0, x1, y1) {
+      const angle = Math.atan2(y1 - y0, x1 - x0);
+      const headLength = 6;
+
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(
+        x1 - headLength * Math.cos(angle - Math.PI / 6),
+        y1 - headLength * Math.sin(angle - Math.PI / 6)
+      );
+      ctx.lineTo(
+        x1 - headLength * Math.cos(angle + Math.PI / 6),
+        y1 - headLength * Math.sin(angle + Math.PI / 6)
+      );
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function draw() {
+      const field = fieldEl.value;
+      const item = catalog[field];
+      const n = Math.min(Number(samplesEl.value), 2600);
+      const simName = item.simulationName;
+      titleEl.textContent = simName;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#f6f6f3";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const samples = sortedSamples(item, field, n);
+      for (const sample of samples) {
+        const { i, p, start } = sample;
+        const hue = Math.round(170 + 95 * rand(i * 7 + 1));
+        ctx.fillStyle = `hsl(${hue} 48% 38% / 0.34)`;
+        ctx.beginPath();
+        ctx.arc(start.x, start.y, item.dimension === 3 ? 1.7 + 0.7 * start.scale : 1.9, 0, 2 * Math.PI);
+        ctx.fill();
+
+        if (i % 8 === 0) {
+          const vectorScale = item.dimension === 3 ? 0.13 : 20;
+          const end = item.dimension === 3
+            ? project3d(p.x + p.vx * vectorScale, p.y + p.vy * vectorScale, p.z + p.vz * vectorScale)
+            : { x: start.x + p.vx * vectorScale, y: start.y - p.vy * vectorScale };
+          ctx.strokeStyle = "rgb(143 63 43 / 0.76)";
+          ctx.fillStyle = "rgb(143 63 43 / 0.76)";
+          ctx.lineWidth = 1.1;
+          drawArrow(start.x, start.y, end.x, end.y);
+        }
+      }
+
+      const rows = [
+        ["simulation_name", simName],
+        ["display_name", item.label],
+        ["manifold", item.manifold],
+        ["field_name", item.fieldName],
+        ["dimension", item.dimension],
+        ["n_samples", samplesEl.value],
+        ["position_noise", positionNoiseEl.value],
+        ["velocity_noise", velocityNoiseEl.value],
+        ["extra_dims", extraDimsEl.value],
+        ["script", item.script],
+        ["module", item.module]
+      ];
+      specEl.innerHTML = rows.map(([k, v]) => `<div class="row"><span>${k}</span><code>${v}</code></div>`).join("");
+    }
+
+    function startDrag(clientX, clientY) {
+      if (catalog[fieldEl.value].dimension !== 3) return;
+      viewport.dragging = true;
+      viewport.lastX = clientX;
+      viewport.lastY = clientY;
+    }
+
+    function moveDrag(clientX, clientY) {
+      if (!viewport.dragging) return;
+      const dx = clientX - viewport.lastX;
+      const dy = clientY - viewport.lastY;
+      viewport.lastX = clientX;
+      viewport.lastY = clientY;
+      viewport.yaw += dx * 0.008;
+      viewport.pitch = Math.max(-1.2, Math.min(1.2, viewport.pitch + dy * 0.008));
+      draw();
+    }
+
+    function endDrag() {
+      viewport.dragging = false;
+    }
+
+    canvas.addEventListener("pointerdown", (event) => {
+      startDrag(event.clientX, event.clientY);
+      if (viewport.dragging && canvas.setPointerCapture) {
+        canvas.setPointerCapture(event.pointerId);
+      }
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      moveDrag(event.clientX, event.clientY);
+    });
+
+    canvas.addEventListener("pointerup", (event) => {
+      endDrag();
+      if (canvas.releasePointerCapture) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
+    });
+
+    canvas.addEventListener("pointercancel", () => {
+      endDrag();
+    });
+
+    if (!("PointerEvent" in window)) {
+      canvas.addEventListener("mousedown", (event) => startDrag(event.clientX, event.clientY));
+      window.addEventListener("mousemove", (event) => moveDrag(event.clientX, event.clientY));
+      window.addEventListener("mouseup", endDrag);
+    }
+
+    canvas.addEventListener("wheel", (event) => {
+      if (catalog[fieldEl.value].dimension !== 3) return;
+      event.preventDefault();
+      viewport.zoom = Math.max(0.65, Math.min(1.7, viewport.zoom - event.deltaY * 0.001));
+      draw();
+    }, { passive: false });
+
+    [fieldEl, positionNoiseEl, velocityNoiseEl, extraDimsEl, samplesEl].forEach((el) => el.addEventListener("input", draw));
+    draw();
+  </script>
+</body>
+</html>

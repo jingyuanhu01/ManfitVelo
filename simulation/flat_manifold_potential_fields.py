@@ -1,9 +1,10 @@
-"""Flat manifold potential-field data generation.
+"""Potential-field data generation.
 
 Each potential defines a scalar U(x, y). The generated velocity is the
-gradient-flow direction V = -grad U. Potential simulations add noise to the
-observed scalar potential, not directly to the velocity vectors. No manifold
-fitting is run here.
+gradient-flow direction V = -grad U. On curved manifolds, U is defined over
+horizontal coordinates and grad U is lifted to the tangent space. Potential
+simulations add noise to the observed scalar potential, not directly to the
+gradient vectors. No manifold fitting is run here.
 """
 
 from __future__ import annotations
@@ -19,14 +20,16 @@ POTENTIAL_FIELD_NAMES = (
     "single_basin",
     "double_well",
     "saddle",
-    "entropy_like",
+    "linear",
 )
 
+POTENTIAL_MANIFOLD_NAMES = ("flat", "half_sphere", "saddle_surface")
+
 POTENTIAL_FIELD_LABELS = {
-    "single_basin": "flat manifold, single basin potential",
-    "double_well": "flat manifold, double well potential",
-    "saddle": "flat manifold, saddle potential",
-    "entropy_like": "flat manifold, entropy-like potential",
+    "single_basin": "single basin potential",
+    "double_well": "double well potential",
+    "saddle": "saddle potential",
+    "linear": "linear potential",
 }
 
 
@@ -34,6 +37,7 @@ POTENTIAL_FIELD_LABELS = {
 class FlatPotentialFieldConfig:
     """Config for flat manifold potential-field data generation."""
 
+    manifold_name: str = "flat"
     field_name: str = "single_basin"
     n_samples: int = 1000
     position_noise: float = 0.3
@@ -43,7 +47,7 @@ class FlatPotentialFieldConfig:
 
     @property
     def simulation_name(self) -> str:
-        return f"flat_manifold__{self.field_name}_potential"
+        return f"{self.manifold_name}_manifold__{self.field_name}_potential"
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self) | {"simulation_name": self.simulation_name}
@@ -74,11 +78,14 @@ def sample_square(n_samples: int, seed: int = 42, extent: float = 1.6) -> np.nda
     return rng.uniform(-extent, extent, size=(n_samples, 2))
 
 
-def potential_and_gradient(field_name: str, position: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Evaluate U and grad U for a named flat potential field."""
+def potential_and_coordinate_gradient(
+    field_name: str,
+    coordinates: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Evaluate U and dU/dcoordinates for a named potential."""
 
-    x = position[:, 0]
-    y = position[:, 1]
+    x = coordinates[:, 0]
+    y = coordinates[:, 1]
 
     if field_name == "single_basin":
         potential = 0.5 * (x * x + y * y)
@@ -92,12 +99,9 @@ def potential_and_gradient(field_name: str, position: np.ndarray) -> tuple[np.nd
         potential = 0.5 * (x * x - y * y)
         gradient = np.stack([x, -y], axis=1)
 
-    elif field_name == "entropy_like":
-        eps = 1e-3
-        radius_sq = x * x + y * y
-        potential = 0.5 * radius_sq * np.log(radius_sq + eps)
-        factor = np.log(radius_sq + eps) + radius_sq / (radius_sq + eps)
-        gradient = np.stack([x * factor, y * factor], axis=1)
+    elif field_name == "linear":
+        potential = x + 0.45 * y
+        gradient = np.stack([np.ones_like(x), np.full_like(y, 0.45)], axis=1)
 
     else:
         raise ValueError(f"field_name must be one of {POTENTIAL_FIELD_NAMES}")
@@ -105,31 +109,121 @@ def potential_and_gradient(field_name: str, position: np.ndarray) -> tuple[np.nd
     return potential, gradient
 
 
-def make_base_potential_field(field_name: str, n_samples: int = 1000, seed: int = 42) -> dict[str, object]:
-    """Create clean positions, potential values, and negative-gradient velocities."""
+def sample_half_sphere(n_samples: int, seed: int = 42) -> tuple[np.ndarray, np.ndarray]:
+    """Sample points on the upper half sphere plus horizontal coordinates."""
 
+    rng = np.random.default_rng(seed)
+    theta = rng.uniform(0.0, 2.0 * np.pi, size=n_samples)
+    vertical = rng.uniform(0.0, 1.0, size=n_samples)
+    radius = np.sqrt(1.0 - vertical * vertical)
+    x = radius * np.cos(theta)
+    z = radius * np.sin(theta)
+    position = np.stack([x, vertical, z], axis=1)
+    coordinates = np.stack([x, z], axis=1)
+    return position, coordinates
+
+
+def sample_saddle_surface(
+    n_samples: int,
+    seed: int = 42,
+    extent: float = 1.2,
+    curvature: float = 0.55,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Sample points on y = curvature * (x^2 - z^2)."""
+
+    rng = np.random.default_rng(seed)
+    x = rng.uniform(-extent, extent, size=n_samples)
+    z = rng.uniform(-extent, extent, size=n_samples)
+    y = curvature * (x * x - z * z)
+    position = np.stack([x, y, z], axis=1)
+    coordinates = np.stack([x, z], axis=1)
+    return position, coordinates
+
+
+def project_to_tangent(position: np.ndarray, ambient_gradient: np.ndarray) -> np.ndarray:
+    """Project ambient vectors to the tangent plane of the unit sphere."""
+
+    normal = normalize_rows(position)
+    normal_component = np.sum(ambient_gradient * normal, axis=1, keepdims=True)
+    return ambient_gradient - normal_component * normal
+
+
+def saddle_surface_gradient(
+    coordinate_gradient: np.ndarray,
+    coordinates: np.ndarray,
+    curvature: float = 0.55,
+) -> np.ndarray:
+    """Convert coordinate gradients to tangent gradients on the saddle surface."""
+
+    x = coordinates[:, 0]
+    z = coordinates[:, 1]
+    fu = coordinate_gradient[:, 0]
+    fv = coordinate_gradient[:, 1]
+    ru_y = 2.0 * curvature * x
+    rv_y = -2.0 * curvature * z
+    g11 = 1.0 + ru_y * ru_y
+    g22 = 1.0 + rv_y * rv_y
+    g12 = ru_y * rv_y
+    determinant = g11 * g22 - g12 * g12
+    a = (g22 * fu - g12 * fv) / determinant
+    b = (-g12 * fu + g11 * fv) / determinant
+    return np.stack([a, a * ru_y + b * rv_y, b], axis=1)
+
+
+def make_base_potential_field(
+    manifold_name: str,
+    field_name: str,
+    n_samples: int = 1000,
+    seed: int = 42,
+) -> dict[str, object]:
+    """Create clean positions, potential values, and tangent gradients."""
+
+    if manifold_name not in POTENTIAL_MANIFOLD_NAMES:
+        raise ValueError(f"manifold_name must be one of {POTENTIAL_MANIFOLD_NAMES}")
     if field_name not in POTENTIAL_FIELD_NAMES:
         raise ValueError(f"field_name must be one of {POTENTIAL_FIELD_NAMES}")
 
-    position = sample_square(n_samples, seed=seed)
-    potential, gradient = potential_and_gradient(field_name, position)
+    if manifold_name == "flat":
+        position = sample_square(n_samples, seed=seed)
+        coordinates = position
+        potential, coordinate_gradient = potential_and_coordinate_gradient(field_name, coordinates)
+        gradient = coordinate_gradient
+    elif manifold_name == "half_sphere":
+        position, coordinates = sample_half_sphere(n_samples, seed=seed)
+        potential, coordinate_gradient = potential_and_coordinate_gradient(field_name, coordinates)
+        ambient_gradient = np.stack(
+            [coordinate_gradient[:, 0], np.zeros(n_samples), coordinate_gradient[:, 1]],
+            axis=1,
+        )
+        gradient = project_to_tangent(position, ambient_gradient)
+    else:
+        position, coordinates = sample_saddle_surface(n_samples, seed=seed)
+        potential, coordinate_gradient = potential_and_coordinate_gradient(field_name, coordinates)
+        gradient = saddle_surface_gradient(coordinate_gradient, coordinates)
+
     velocity = -normalize_rows(gradient)
 
     return {
         "position": position,
+        "coordinates": coordinates,
         "velocity": velocity,
         "gradient": gradient,
         "potential": potential,
         "potential_normalized": normalize_values(potential),
         "name": field_name,
-        "label": POTENTIAL_FIELD_LABELS[field_name],
+        "label": f"{manifold_name.replace('_', ' ')} manifold, {POTENTIAL_FIELD_LABELS[field_name]}",
     }
 
 
 def make_flat_manifold_potential_field(config: FlatPotentialFieldConfig) -> dict[str, object]:
     """Generate clean, noisy, and extra-dimensional flat potential data."""
 
-    base = make_base_potential_field(config.field_name, config.n_samples, config.seed)
+    base = make_base_potential_field(
+        config.manifold_name,
+        config.field_name,
+        config.n_samples,
+        config.seed,
+    )
     rng = np.random.default_rng(config.seed)
 
     x_gt = np.asarray(base["position"])
@@ -164,17 +258,19 @@ def make_flat_manifold_potential_field(config: FlatPotentialFieldConfig) -> dict
 
 
 def make_all_flat_manifold_potential_fields(
+    manifold_name: str = "flat",
     n_samples: int = 1000,
     position_noise: float = 0.3,
     potential_noise: float = 0.3,
     extra_dims: int = 5,
     seed: int = 42,
 ) -> dict[str, dict[str, object]]:
-    """Generate all flat potential simulations."""
+    """Generate all potential simulations for one manifold."""
 
     return {
         field_name: make_flat_manifold_potential_field(
             FlatPotentialFieldConfig(
+                manifold_name=manifold_name,
                 field_name=field_name,
                 n_samples=n_samples,
                 position_noise=position_noise,

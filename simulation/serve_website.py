@@ -30,6 +30,7 @@ from simulation.flat_manifold_vector_fields import (  # noqa: E402
 )
 from simulation.flat_manifold_potential_fields import (  # noqa: E402
     POTENTIAL_FIELD_NAMES,
+    POTENTIAL_MANIFOLD_NAMES,
     FlatPotentialFieldConfig,
     make_flat_manifold_potential_field,
 )
@@ -81,17 +82,22 @@ def parse_payload(raw_body: bytes) -> dict[str, Any]:
     if position_noise < 0:
         raise ValueError("Noise values must be non-negative")
 
-    if manifold == "flat":
-        simulation_kind = str(payload.get("simulation_kind", "vector_field"))
-        if simulation_kind == "potential_field":
+    simulation_kind = str(payload.get("simulation_kind", "vector_field"))
+
+    if simulation_kind == "potential_field":
+        if manifold in POTENTIAL_MANIFOLD_NAMES:
             if field_name not in POTENTIAL_FIELD_NAMES:
-                raise ValueError(f"Unknown flat potential field: {field_name}")
+                raise ValueError(f"Unknown potential field: {field_name}")
             potential_noise = float(payload.get("potential_noise", payload.get("velocity_noise", 0.0)))
             if potential_noise < 0:
                 raise ValueError("Noise values must be non-negative")
             velocity_noise = None
-            simulation_name = f"flat_manifold__{field_name}_potential"
-        elif simulation_kind == "vector_field":
+            simulation_name = f"{manifold}_manifold__{field_name}_potential"
+        else:
+            raise ValueError(f"{manifold} does not support potential simulations")
+
+    elif manifold == "flat":
+        if simulation_kind == "vector_field":
             if field_name not in FIELD_NAMES:
                 raise ValueError(f"Unknown flat field: {field_name}")
             velocity_noise = float(payload["velocity_noise"])
@@ -136,9 +142,10 @@ def parse_payload(raw_body: bytes) -> dict[str, Any]:
 def generate_simulation(config: dict[str, Any]) -> dict[str, object]:
     """Run the matching reusable generator."""
 
-    if config["manifold"] == "flat" and config["simulation_kind"] == "potential_field":
+    if config["simulation_kind"] == "potential_field":
         return make_flat_manifold_potential_field(
             FlatPotentialFieldConfig(
+                manifold_name=config["manifold"],
                 field_name=config["field_name"],
                 n_samples=config["n_samples"],
                 position_noise=config["position_noise"],

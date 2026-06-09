@@ -220,7 +220,9 @@
         <div class="card"><strong>flat manifold, single basin potential</strong><p>Potential color from <code>0.5(x^2 + y^2)</code>; arrows follow <code>-grad U</code>.</p></div>
         <div class="card"><strong>flat manifold, double well potential</strong><p>Two minima along the horizontal axis with vertical confinement.</p></div>
         <div class="card"><strong>flat manifold, saddle potential</strong><p>Saddle potential <code>0.5(x^2 - y^2)</code> with gradient flow arrows.</p></div>
-        <div class="card"><strong>flat manifold, entropy-like potential</strong><p>Radial <code>r^2 log(r^2)</code>-style potential with gradient flow arrows.</p></div>
+        <div class="card"><strong>flat manifold, linear potential</strong><p>Constant-slope scalar field with uniform gradient flow arrows.</p></div>
+        <div class="card"><strong>half sphere manifold potentials</strong><p>The same four scalar potentials lifted onto the sphere tangent geometry.</p></div>
+        <div class="card"><strong>saddle surface manifold potentials</strong><p>The same four scalar potentials lifted onto the negative-curvature saddle surface.</p></div>
         <div class="card"><strong>s curve manifold, velocity flow field</strong><p>3D S-curve with tangent flow along the rolled coordinate.</p></div>
         <div class="card"><strong>swiss roll manifold, velocity flow field</strong><p>3D Swiss roll with tangent flow along the spiral coordinate.</p></div>
         <div class="card"><strong>half sphere manifold, velocity flow field</strong><p>Upper hemisphere with tangent rotation around the vertical axis.</p></div>
@@ -361,11 +363,11 @@
         script: "simulation/generate_flat_manifold_potential_fields.py",
         module: "simulation/flat_manifold_potential_fields.py"
       },
-      flat_potential_entropy_like: {
-        label: "flat manifold, entropy-like potential",
-        simulationName: "flat_manifold__entropy_like_potential",
+      flat_potential_linear: {
+        label: "flat manifold, linear potential",
+        simulationName: "flat_manifold__linear_potential",
         manifold: "flat",
-        fieldName: "entropy_like",
+        fieldName: "linear",
         simulationKind: "potential_field",
         dimension: 2,
         script: "simulation/generate_flat_manifold_potential_fields.py",
@@ -533,6 +535,29 @@
       }
     };
 
+    const potentialFields = [
+      ["single_basin", "single basin potential"],
+      ["double_well", "double well potential"],
+      ["saddle", "saddle potential"],
+      ["linear", "linear potential"]
+    ];
+    ["half_sphere", "saddle_surface"].forEach((manifold) => {
+      potentialFields.forEach(([fieldName, fieldLabel]) => {
+        const key = `${manifold}_potential_${fieldName}`;
+        const manifoldLabel = manifold.replaceAll("_", " ");
+        catalog[key] = {
+          label: `${manifoldLabel} manifold, ${fieldLabel}`,
+          simulationName: `${manifold}_manifold__${fieldName}_potential`,
+          manifold,
+          fieldName,
+          simulationKind: "potential_field",
+          dimension: 3,
+          script: "simulation/generate_flat_manifold_potential_fields.py",
+          module: "simulation/flat_manifold_potential_fields.py"
+        };
+      });
+    });
+
     const viewport = {
       yaw: -0.72,
       pitch: 0.55,
@@ -604,46 +629,106 @@
       return { x, y, z, vx, vy, vz };
     }
 
+    function potentialFormula(fieldName, u, v) {
+      if (fieldName === "single_basin") {
+        return { potential: 0.5 * (u * u + v * v), gu: u, gv: v };
+      }
+      if (fieldName === "double_well") {
+        return {
+          potential: (u * u - 1) ** 2 + 0.45 * v * v,
+          gu: 4 * u * (u * u - 1),
+          gv: 0.9 * v
+        };
+      }
+      if (fieldName === "saddle") {
+        return { potential: 0.5 * (u * u - v * v), gu: u, gv: -v };
+      }
+      return { potential: u + 0.45 * v, gu: 1, gv: 0.45 };
+    }
+
+    function projectHalfSphereGradient(x, y, z, gu, gv) {
+      let vx = gu;
+      let vy = 0;
+      let vz = gv;
+      const nx = x;
+      const ny = y + 0.28;
+      const nz = z;
+      const normalNorm = Math.hypot(nx, ny, nz) || 1;
+      const ux = nx / normalNorm;
+      const uy = ny / normalNorm;
+      const uz = nz / normalNorm;
+      const normalComponent = vx * ux + vy * uy + vz * uz;
+      vx -= normalComponent * ux;
+      vy -= normalComponent * uy;
+      vz -= normalComponent * uz;
+      return { vx, vy, vz };
+    }
+
+    function saddleSurfaceGradient(u, v, gu, gv) {
+      const curvature = 0.55;
+      const ruY = 2 * curvature * u;
+      const rvY = -2 * curvature * v;
+      const g11 = 1 + ruY * ruY;
+      const g22 = 1 + rvY * rvY;
+      const g12 = ruY * rvY;
+      const determinant = g11 * g22 - g12 * g12;
+      const a = (g22 * gu - g12 * gv) / determinant;
+      const b = (-g12 * gu + g11 * gv) / determinant;
+      return { vx: a, vy: a * ruY + b * rvY, vz: b };
+    }
+
     function potentialPoint(i, n, field) {
       const item = catalog[field];
-      const x = 1.6 * (2 * rand(i * 19 + 5) - 1);
-      const y = 1.6 * (2 * rand(i * 23 + 7) - 1);
-      let potential;
-      let gx;
-      let gy;
-
-      if (item.fieldName === "single_basin") {
-        potential = 0.5 * (x * x + y * y);
-        gx = x;
-        gy = y;
-      } else if (item.fieldName === "double_well") {
-        potential = (x * x - 1) ** 2 + 0.45 * y * y;
-        gx = 4 * x * (x * x - 1);
-        gy = 0.9 * y;
-      } else if (item.fieldName === "saddle") {
-        potential = 0.5 * (x * x - y * y);
-        gx = x;
-        gy = -y;
-      } else {
-        const eps = 0.001;
-        const r2 = x * x + y * y;
-        potential = 0.5 * r2 * Math.log(r2 + eps);
-        const factor = Math.log(r2 + eps) + r2 / (r2 + eps);
-        gx = x * factor;
-        gy = y * factor;
-      }
-
-      const norm = Math.hypot(gx, gy) || 1;
       const positionNoise = Number(positionNoiseEl.value);
       const potentialNoise = Number(velocityNoiseEl.value);
+      let x;
+      let y;
+      let z;
+      let u;
+      let v;
+      let gradient;
+
+      if (item.manifold === "half_sphere") {
+        const theta = 2 * Math.PI * rand(i * 17 + 3);
+        const vertical = rand(i * 31 + 11);
+        const radius = Math.sqrt(1 - vertical * vertical);
+        u = radius * Math.cos(theta);
+        v = radius * Math.sin(theta);
+        x = 0.78 * u;
+        y = 0.78 * vertical - 0.28;
+        z = 0.78 * v;
+      } else if (item.manifold === "saddle_surface") {
+        u = 1.55 * (rand(i * 19 + 5) - 0.5);
+        v = 1.55 * (rand(i * 31 + 11) - 0.5);
+        x = u;
+        y = 0.55 * (u * u - v * v);
+        z = v;
+      } else {
+        u = 1.6 * (2 * rand(i * 19 + 5) - 1);
+        v = 1.6 * (2 * rand(i * 23 + 7) - 1);
+        x = u / 1.6;
+        y = v / 1.6;
+        z = 0;
+      }
+
+      const scalar = potentialFormula(item.fieldName, u, v);
+      if (item.manifold === "half_sphere") {
+        gradient = projectHalfSphereGradient(x, y, z, scalar.gu, scalar.gv);
+      } else if (item.manifold === "saddle_surface") {
+        gradient = saddleSurfaceGradient(u, v, scalar.gu, scalar.gv);
+      } else {
+        gradient = { vx: scalar.gu, vy: scalar.gv, vz: 0 };
+      }
+
+      const norm = Math.hypot(gradient.vx, gradient.vy, gradient.vz) || 1;
       return {
-        x: x / 1.6 + positionNoise * 0.18 * (rand(i * 41 + 13) - 0.5),
-        y: y / 1.6 + positionNoise * 0.18 * (rand(i * 43 + 17) - 0.5),
-        z: 0,
-        vx: -gx / norm,
-        vy: -gy / norm,
-        vz: 0,
-        potential: potential + potentialNoise * (rand(i * 47 + 19) - 0.5)
+        x: x + positionNoise * 0.18 * (rand(i * 41 + 13) - 0.5),
+        y: y + positionNoise * 0.18 * (rand(i * 43 + 17) - 0.5),
+        z: z + positionNoise * 0.18 * (rand(i * 59 + 29) - 0.5),
+        vx: -gradient.vx / norm,
+        vy: -gradient.vy / norm,
+        vz: -gradient.vz / norm,
+        potential: scalar.potential + potentialNoise * (rand(i * 47 + 19) - 0.5)
       };
     }
 

@@ -151,15 +151,31 @@ def set_shared_limits(axes: np.ndarray, *arrays: np.ndarray) -> None:
         ax.set_ylabel("PC2")
 
 
+def scale_vectors_for_display(Z: np.ndarray, V: np.ndarray, arrow_frac: float = 0.07) -> np.ndarray:
+    """Scale projected gradient vectors to a readable visual length."""
+
+    span = max(np.ptp(Z[:, 0]), np.ptp(Z[:, 1]), np.finfo(float).eps)
+    norms = np.linalg.norm(V, axis=1)
+    nonzero = norms[norms > np.finfo(float).eps]
+    if nonzero.size == 0:
+        return V
+    robust_norm = np.percentile(nonzero, 95)
+    return V * (arrow_frac * span / robust_norm)
+
+
 def plot_three_panel(
     Z_before: np.ndarray,
     Z_after: np.ndarray,
+    V_before: np.ndarray,
+    V_after: np.ndarray,
     fitness: np.ndarray,
     path_indices: np.ndarray,
     output_path: Path,
 ) -> None:
     vmax = np.nanpercentile(fitness, 99)
     vmin = np.nanpercentile(fitness, 1)
+    V_before_plot = scale_vectors_for_display(Z_before, V_before)
+    V_after_plot = scale_vectors_for_display(Z_after, V_after)
     fig, axes = plt.subplots(1, 3, figsize=(18.2, 5.8), constrained_layout=False)
 
     axes[0].scatter(
@@ -173,6 +189,18 @@ def plot_three_panel(
         alpha=0.82,
         linewidths=0,
     )
+    axes[0].quiver(
+        Z_before[path_indices, 0],
+        Z_before[path_indices, 1],
+        V_before_plot[path_indices, 0],
+        V_before_plot[path_indices, 1],
+        angles="xy",
+        scale_units="xy",
+        scale=0.55,
+        color="#111827",
+        width=0.0032,
+        alpha=0.78,
+    )
     axes[0].set_title("Before manifold fitting")
 
     axes[1].scatter(
@@ -185,6 +213,18 @@ def plot_three_panel(
         s=24,
         alpha=0.82,
         linewidths=0,
+    )
+    axes[1].quiver(
+        Z_after[path_indices, 0],
+        Z_after[path_indices, 1],
+        V_after_plot[path_indices, 0],
+        V_after_plot[path_indices, 1],
+        angles="xy",
+        scale_units="xy",
+        scale=0.55,
+        color="#111827",
+        width=0.0032,
+        alpha=0.78,
     )
     axes[1].set_title("After position + gradient MANFIT")
 
@@ -249,10 +289,12 @@ def main() -> None:
     pca = PCA(n_components=2, random_state=args.random_state).fit(X)
     Z_before = pca.transform(X)
     Z_after = pca.transform(fit["position"])
+    V_before = gradient @ pca.components_.T
+    V_after = fit["gradient"] @ pca.components_.T
     path_indices = choose_path_indices(X.shape[0], args.max_paths, args.random_state)
 
     output_path = args.output_dir / "fitness_landscape_pca_three_panel_before_after.png"
-    plot_three_panel(Z_before, Z_after, t50, path_indices, output_path)
+    plot_three_panel(Z_before, Z_after, V_before, V_after, t50, path_indices, output_path)
     print(output_path)
 
 

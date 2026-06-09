@@ -112,6 +112,18 @@ def normalize_vectors(vectors: np.ndarray, eps: float = 1e-12) -> tuple[np.ndarr
     return vectors / (norms[:, None] + eps), norms
 
 
+def scale_vectors_for_display(Z: np.ndarray, V: np.ndarray, arrow_frac: float = 0.052) -> np.ndarray:
+    """Scale vectors to a stable visual length in a PCA panel."""
+
+    span = max(np.ptp(Z[:, 0]), np.ptp(Z[:, 1]), np.finfo(float).eps)
+    norms = np.linalg.norm(V, axis=1)
+    nonzero = norms[norms > np.finfo(float).eps]
+    if nonzero.size == 0:
+        return V
+    robust_norm = np.percentile(nonzero, 95)
+    return V * (arrow_frac * span / robust_norm)
+
+
 def plot_gradient_panel(
     X_raw_display: np.ndarray,
     X_fit_display: np.ndarray,
@@ -183,12 +195,18 @@ def plot_potential_movement_panel(
     X_fit_display: np.ndarray,
     entropy: np.ndarray,
     movement_indices: np.ndarray,
+    raw_cell_gradient: np.ndarray,
+    fitted_cell_gradient: np.ndarray,
     output_path: Path,
 ) -> None:
-    """Write a three-panel PCA potential comparison with movement paths."""
+    """Write a three-panel PCA potential comparison with gradients and movement paths."""
 
     vmax = np.nanpercentile(entropy, 99)
     vmin = np.nanpercentile(entropy, 1)
+    gradient_step = max(1, int(np.ceil(movement_indices.shape[0] / 320)))
+    gradient_indices = movement_indices[::gradient_step]
+    raw_gradient_plot = scale_vectors_for_display(X_raw_display, raw_cell_gradient)
+    fitted_gradient_plot = scale_vectors_for_display(X_fit_display, fitted_cell_gradient)
     fig, axes = plt.subplots(1, 3, figsize=(18.2, 5.8), constrained_layout=False)
 
     axes[0].scatter(
@@ -202,6 +220,18 @@ def plot_potential_movement_panel(
         vmin=vmin,
         vmax=vmax,
     )
+    axes[0].quiver(
+        X_raw_display[gradient_indices, 0],
+        X_raw_display[gradient_indices, 1],
+        raw_gradient_plot[gradient_indices, 0],
+        raw_gradient_plot[gradient_indices, 1],
+        angles="xy",
+        scale_units="xy",
+        scale=0.55,
+        color="#111827",
+        width=0.0028,
+        alpha=0.78,
+    )
     axes[0].set_title("Before manifold fitting")
 
     axes[1].scatter(
@@ -214,6 +244,18 @@ def plot_potential_movement_panel(
         cmap="viridis",
         vmin=vmin,
         vmax=vmax,
+    )
+    axes[1].quiver(
+        X_fit_display[gradient_indices, 0],
+        X_fit_display[gradient_indices, 1],
+        fitted_gradient_plot[gradient_indices, 0],
+        fitted_gradient_plot[gradient_indices, 1],
+        angles="xy",
+        scale_units="xy",
+        scale=0.55,
+        color="#111827",
+        width=0.0028,
+        alpha=0.78,
     )
     axes[1].set_title("After manifold fitting")
 
@@ -418,6 +460,8 @@ def main() -> None:
         fitted_display,
         entropy,
         arrow_indices,
+        raw_cell_gradient[:, :2],
+        fitted_cell_gradient[:, :2],
         movement_panel_path,
     )
 

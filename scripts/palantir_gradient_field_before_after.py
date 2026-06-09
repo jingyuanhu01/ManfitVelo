@@ -22,6 +22,8 @@ import sys
 
 import numpy as np
 import pandas as pd
+from scipy.interpolate import SmoothBivariateSpline
+from scipy.spatial import Delaunay
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 os.environ.setdefault("LOKY_MAX_CPU_COUNT", "8")
@@ -56,6 +58,8 @@ def parse_args() -> argparse.Namespace:
         default=ROOT / "outputs/real_data_palantir",
     )
     parser.add_argument("--max-arrows", type=int, default=850)
+    parser.add_argument("--potential-grid-size", type=int, default=85)
+    parser.add_argument("--spline-smoothing", type=float, default=70.0)
     parser.add_argument("--pca-dims", type=int, default=30)
     parser.add_argument("--gradient-neighbors", type=int, default=42)
     parser.add_argument("--outer-iterations", type=int, default=4)
@@ -174,6 +178,107 @@ def plot_gradient_panel(
     plt.close(fig)
 
 
+def fit_spline_potential_surface(
+    X_display: np.ndarray,
+    entropy: np.ndarray,
+    *,
+    grid_size: int,
+    smoothing: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Fit a smooth bivariate spline potential on PC1/PC2 and evaluate it on a hull-masked grid."""
+
+    x = X_display[:, 0]
+    y = X_display[:, 1]
+    spline = SmoothBivariateSpline(x, y, entropy, kx=3, ky=3, s=float(smoothing))
+    gx = np.linspace(np.min(x), np.max(x), int(grid_size))
+    gy = np.linspace(np.min(y), np.max(y), int(grid_size))
+    xx, yy = np.meshgrid(gx, gy)
+    zz = spline.ev(xx.ravel(), yy.ravel()).reshape(xx.shape)
+    zz = np.clip(zz, np.nanmin(entropy), np.nanmax(entropy))
+    inside = Delaunay(X_display).find_simplex(np.column_stack([xx.ravel(), yy.ravel()])) >= 0
+    zz = np.where(inside.reshape(xx.shape), zz, np.nan)
+    return xx, yy, zz
+
+
+def plot_potential_3d_panel(
+    X_raw_display: np.ndarray,
+    X_fit_display: np.ndarray,
+    entropy: np.ndarray,
+    output_path: Path,
+    *,
+    grid_size: int,
+    smoothing: float,
+) -> None:
+    """Write a side-by-side 3D spline entropy potential landscape."""
+
+    vmax = np.nanpercentile(entropy, 99)
+    vmin = np.nanpercentile(entropy, 1)
+    z_min = float(np.nanmin(entropy))
+    z_max = float(np.nanmax(entropy))
+
+    fig = plt.figure(figsize=(14.0, 6.2), constrained_layout=True)
+    panel_specs = [
+        (fig.add_subplot(1, 2, 1, projection="3d"), X_raw_display, "Before fitting: PCA spline potential"),
+        (fig.add_subplot(1, 2, 2, projection="3d"), X_fit_display, "After fitting: PCA MANFIT spline potential"),
+    ]
+
+    mappable = None
+    for ax, X_display, title in panel_specs:
+        xx, yy, zz = fit_spline_potential_surface(
+            X_display,
+            entropy,
+            grid_size=grid_size,
+            smoothing=smoothing,
+        )
+        surface = ax.plot_surface(
+            xx,
+            yy,
+            zz,
+            cmap="viridis",
+            vmin=vmin,
+            vmax=vmax,
+            linewidth=0.0,
+            antialiased=True,
+            alpha=0.84,
+        )
+        ax.scatter(
+            X_display[:, 0],
+            X_display[:, 1],
+            entropy,
+            c=entropy,
+            cmap="viridis",
+            vmin=vmin,
+            vmax=vmax,
+            s=2.0,
+            alpha=0.32,
+            depthshade=False,
+        )
+        mappable = surface
+        ax.set_title(title)
+        ax.set_xlabel("PC1")
+        ax.set_ylabel("PC2")
+        ax.set_zlabel("Palantir fate entropy")
+        ax.set_zlim(z_min, z_max)
+        ax.view_init(elev=28, azim=-62)
+        ax.grid(False)
+        ax.xaxis.pane.set_alpha(0.0)
+        ax.yaxis.pane.set_alpha(0.0)
+        ax.zaxis.pane.set_alpha(0.0)
+
+    if mappable is not None:
+        fig.colorbar(
+            mappable,
+            ax=[spec[0] for spec in panel_specs],
+            fraction=0.035,
+            pad=0.02,
+            label="Spline entropy potential",
+        )
+    fig.suptitle("Palantir Bone Marrow: PCA Spline Potential Field Before and After Manifold Fitting", y=1.02)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=220, bbox_inches="tight")
+    plt.close(fig)
+
+
 def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -223,6 +328,16 @@ def main() -> None:
         panel_path,
     )
 
+    potential_3d_path = args.output_dir / "palantir_entropy_potential_pca_3d_before_after_manifold_fit.png"
+    plot_potential_3d_panel(
+        raw_display,
+        fitted_display,
+        entropy,
+        potential_3d_path,
+        grid_size=args.potential_grid_size,
+        smoothing=args.spline_smoothing,
+    )
+
     raw_vectors = pd.DataFrame(
         {
             "panel": "before_pca_local_gradient",
@@ -261,6 +376,8 @@ def main() -> None:
                 "fit_neighbors": int(args.fit_neighbors),
                 "inner_iterations": int(args.inner_iterations),
                 "quiver_arrows": int(arrow_indices.shape[0]),
+                "potential_grid_size": int(args.potential_grid_size),
+                "spline_smoothing": float(args.spline_smoothing),
                 "mean_fit_confidence": float(np.mean(fitted["confidence"])),
             }
         ]
@@ -268,6 +385,7 @@ def main() -> None:
     summary.to_csv(args.output_dir / "palantir_entropy_gradient_pca_before_after_summary.csv", index=False)
 
     print(panel_path)
+    print(potential_3d_path)
     print(args.output_dir / "palantir_entropy_gradient_pca_before_after_vectors.csv")
     print(args.output_dir / "palantir_entropy_gradient_pca_before_after_summary.csv")
 

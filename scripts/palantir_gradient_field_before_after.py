@@ -22,8 +22,6 @@ import sys
 
 import numpy as np
 import pandas as pd
-from scipy.spatial import Delaunay
-from sklearn.neighbors import NearestNeighbors
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 os.environ.setdefault("LOKY_MAX_CPU_COUNT", "8")
@@ -57,10 +55,9 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=ROOT / "outputs/real_data_palantir",
     )
-    parser.add_argument("--grid-size", type=int, default=30)
+    parser.add_argument("--max-arrows", type=int, default=850)
     parser.add_argument("--pca-dims", type=int, default=30)
     parser.add_argument("--gradient-neighbors", type=int, default=42)
-    parser.add_argument("--grid-neighbors", type=int, default=18)
     parser.add_argument("--outer-iterations", type=int, default=4)
     parser.add_argument("--fit-neighbors", type=int, default=15)
     parser.add_argument("--inner-iterations", type=int, default=2)
@@ -95,38 +92,15 @@ def zscore(values: np.ndarray) -> np.ndarray:
     return (values - np.mean(values)) / (np.std(values) + 1e-12)
 
 
-def make_display_grid(
-    X_display: np.ndarray,
-    grid_size: int = 30,
-    pad_fraction: float = 0.04,
-) -> np.ndarray:
-    """Create a regular PC1/PC2 grid and keep points inside the display hull."""
+def choose_arrow_cells(n_cells: int, max_arrows: int, random_state: int) -> np.ndarray:
+    """Choose actual cell indices for quiver arrows without changing point positions."""
 
-    pad_x = pad_fraction * np.ptp(X_display[:, 0])
-    pad_y = pad_fraction * np.ptp(X_display[:, 1])
-    gx = np.linspace(X_display[:, 0].min() - pad_x, X_display[:, 0].max() + pad_x, grid_size)
-    gy = np.linspace(X_display[:, 1].min() - pad_y, X_display[:, 1].max() + pad_y, grid_size)
-    xx, yy = np.meshgrid(gx, gy)
-    grid = np.column_stack([xx.ravel(), yy.ravel()])
-    inside = Delaunay(X_display).find_simplex(grid) >= 0
-    return grid[inside]
-
-
-def smooth_cell_gradients_to_grid(
-    X_display: np.ndarray,
-    cell_gradient_display: np.ndarray,
-    grid: np.ndarray,
-    n_neighbors: int = 18,
-) -> np.ndarray:
-    """Interpolate local cell gradients onto grid points with Gaussian weights."""
-
-    n_neighbors = min(int(n_neighbors), X_display.shape[0])
-    nbrs = NearestNeighbors(n_neighbors=n_neighbors).fit(X_display)
-    distances, indices = nbrs.kneighbors(grid)
-    bandwidth = np.median(distances[:, -1]) + 1e-12
-    weights = np.exp(-0.5 * (distances / bandwidth) ** 2)
-    weights /= np.sum(weights, axis=1, keepdims=True) + 1e-12
-    return np.einsum("gk,gkd->gd", weights, cell_gradient_display[indices])
+    n_cells = int(n_cells)
+    max_arrows = min(max(int(max_arrows), 1), n_cells)
+    if max_arrows == n_cells:
+        return np.arange(n_cells)
+    rng = np.random.default_rng(random_state)
+    return np.sort(rng.choice(n_cells, size=max_arrows, replace=False))
 
 
 def normalize_vectors(vectors: np.ndarray, eps: float = 1e-12) -> tuple[np.ndarray, np.ndarray]:
@@ -138,26 +112,27 @@ def plot_gradient_panel(
     X_raw_display: np.ndarray,
     X_fit_display: np.ndarray,
     entropy: np.ndarray,
-    raw_grid: np.ndarray,
-    fitted_grid: np.ndarray,
-    raw_grid_gradient: np.ndarray,
-    fitted_grid_gradient: np.ndarray,
+    arrow_indices: np.ndarray,
+    raw_cell_gradient: np.ndarray,
+    fitted_cell_gradient: np.ndarray,
     output_path: Path,
 ) -> None:
     """Write a before/after gradient-field panel."""
 
-    raw_unit, raw_norm = normalize_vectors(raw_grid_gradient)
-    fitted_unit, fitted_norm = normalize_vectors(fitted_grid_gradient)
+    raw_arrow_gradient = raw_cell_gradient[arrow_indices]
+    fitted_arrow_gradient = fitted_cell_gradient[arrow_indices]
+    raw_unit, _ = normalize_vectors(raw_arrow_gradient)
+    fitted_unit, _ = normalize_vectors(fitted_arrow_gradient)
     vmax = np.nanpercentile(entropy, 99)
     vmin = np.nanpercentile(entropy, 1)
 
     fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.8), constrained_layout=True)
     panel_specs = [
-        (axes[0], X_raw_display, raw_grid, raw_unit, raw_norm, "Before fitting: PCA local entropy gradient"),
-        (axes[1], X_fit_display, fitted_grid, fitted_unit, fitted_norm, "After fitting: PCA MANFIT entropy gradient"),
+        (axes[0], X_raw_display, raw_unit, "Before fitting: PCA local entropy gradient"),
+        (axes[1], X_fit_display, fitted_unit, "After fitting: PCA MANFIT entropy gradient"),
     ]
 
-    for ax, X_display, grid, gradient_unit, gradient_norm, title in panel_specs:
+    for ax, X_display, gradient_unit, title in panel_specs:
         scatter = ax.scatter(
             X_display[:, 0],
             X_display[:, 1],
@@ -170,15 +145,15 @@ def plot_gradient_panel(
             vmax=vmax,
         )
         ax.quiver(
-            grid[:, 0],
-            grid[:, 1],
+            X_display[arrow_indices, 0],
+            X_display[arrow_indices, 1],
             gradient_unit[:, 0],
             gradient_unit[:, 1],
             color="#111827",
             angles="xy",
             scale_units="xy",
-            scale=2.2,
-            width=0.0032,
+            scale=1.9,
+            width=0.0029,
             headwidth=3.6,
             headlength=4.6,
             headaxislength=4.0,
@@ -231,20 +206,10 @@ def main() -> None:
     fitted_cell_gradient = fitted["gradient"]
     raw_display = X_pca[:, :2]
     fitted_display = fitted_position[:, :2]
-
-    raw_grid = make_display_grid(raw_display, grid_size=args.grid_size)
-    fitted_grid = make_display_grid(fitted_display, grid_size=args.grid_size)
-    raw_grid_gradient = smooth_cell_gradients_to_grid(
-        raw_display,
-        raw_cell_gradient[:, :2],
-        raw_grid,
-        n_neighbors=args.grid_neighbors,
-    )
-    fitted_grid_gradient = smooth_cell_gradients_to_grid(
-        fitted_display,
-        fitted_cell_gradient[:, :2],
-        fitted_grid,
-        n_neighbors=args.grid_neighbors,
+    arrow_indices = choose_arrow_cells(
+        X_pca.shape[0],
+        max_arrows=args.max_arrows,
+        random_state=args.random_state,
     )
 
     panel_path = args.output_dir / "palantir_entropy_gradient_pca_before_after_manifold_fit.png"
@@ -252,31 +217,32 @@ def main() -> None:
         raw_display,
         fitted_display,
         entropy,
-        raw_grid,
-        fitted_grid,
-        raw_grid_gradient,
-        fitted_grid_gradient,
+        arrow_indices,
+        raw_cell_gradient[:, :2],
+        fitted_cell_gradient[:, :2],
         panel_path,
     )
 
     raw_vectors = pd.DataFrame(
         {
             "panel": "before_pca_local_gradient",
-            "grid_pc_1": raw_grid[:, 0],
-            "grid_pc_2": raw_grid[:, 1],
-            "grad_pc_1": raw_grid_gradient[:, 0],
-            "grad_pc_2": raw_grid_gradient[:, 1],
-            "grad_norm": np.linalg.norm(raw_grid_gradient, axis=1),
+            "cell_index": arrow_indices,
+            "pc_1": raw_display[arrow_indices, 0],
+            "pc_2": raw_display[arrow_indices, 1],
+            "grad_pc_1": raw_cell_gradient[arrow_indices, 0],
+            "grad_pc_2": raw_cell_gradient[arrow_indices, 1],
+            "grad_norm": np.linalg.norm(raw_cell_gradient[arrow_indices, :2], axis=1),
         }
     )
     fitted_vectors = pd.DataFrame(
         {
             "panel": "after_pca_manfit_gradient",
-            "grid_pc_1": fitted_grid[:, 0],
-            "grid_pc_2": fitted_grid[:, 1],
-            "grad_pc_1": fitted_grid_gradient[:, 0],
-            "grad_pc_2": fitted_grid_gradient[:, 1],
-            "grad_norm": np.linalg.norm(fitted_grid_gradient, axis=1),
+            "cell_index": arrow_indices,
+            "pc_1": fitted_display[arrow_indices, 0],
+            "pc_2": fitted_display[arrow_indices, 1],
+            "grad_pc_1": fitted_cell_gradient[arrow_indices, 0],
+            "grad_pc_2": fitted_cell_gradient[arrow_indices, 1],
+            "grad_norm": np.linalg.norm(fitted_cell_gradient[arrow_indices, :2], axis=1),
         }
     )
     vectors = pd.concat([raw_vectors, fitted_vectors], ignore_index=True)
@@ -294,8 +260,7 @@ def main() -> None:
                 "outer_iterations": int(args.outer_iterations),
                 "fit_neighbors": int(args.fit_neighbors),
                 "inner_iterations": int(args.inner_iterations),
-                "raw_grid_vectors": int(raw_grid.shape[0]),
-                "fitted_grid_vectors": int(fitted_grid.shape[0]),
+                "quiver_arrows": int(arrow_indices.shape[0]),
                 "mean_fit_confidence": float(np.mean(fitted["confidence"])),
             }
         ]

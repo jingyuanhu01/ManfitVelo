@@ -176,16 +176,26 @@ def generate_simulation(config: dict[str, Any]) -> dict[str, object]:
 
 
 def write_simulation(simulation: dict[str, object], config: dict[str, Any]) -> Path:
-    """Write X and V matrices into simulation/data/<config-derived-name>/."""
+    """Write noisy and ground-truth matrices into simulation/data/<config-derived-name>/."""
 
     output_dir = DATA_DIR / safe_dir_name(config)
     output_dir.mkdir(parents=True, exist_ok=True)
-    np.save(output_dir / "X.npy", simulation["X"])
-    np.save(output_dir / "V.npy", simulation["V"])
-    if "potential" in simulation:
-        np.save(output_dir / "potential.npy", simulation["potential"])
-    if "potential_gt" in simulation:
-        np.save(output_dir / "potential_gt.npy", simulation["potential_gt"])
+    noisy_dir = output_dir / "noisy"
+    ground_truth_dir = output_dir / "ground_truth"
+    noisy_dir.mkdir(exist_ok=True)
+    ground_truth_dir.mkdir(exist_ok=True)
+
+    np.save(noisy_dir / "X.npy", simulation["X"])
+    np.save(ground_truth_dir / "X.npy", simulation["X_gt"])
+
+    if config["simulation_kind"] == "potential_field":
+        np.save(noisy_dir / "f.npy", simulation["f"])
+        np.save(ground_truth_dir / "f.npy", simulation["f_gt"])
+        np.save(ground_truth_dir / "grad_f.npy", simulation["grad_f_gt"])
+    else:
+        np.save(noisy_dir / "V.npy", simulation["V"])
+        np.save(ground_truth_dir / "V.npy", simulation["V_gt"])
+
     (output_dir / "metadata.json").write_text(
         json.dumps(simulation["config"], indent=2) + "\n",
         encoding="utf-8",
@@ -226,9 +236,9 @@ class SimulationRequestHandler(SimpleHTTPRequestHandler):
             {
                 "ok": True,
                 "output_dir": str(output_dir.relative_to(ROOT)),
-                "files": ["X.npy", "V.npy", "potential.npy", "potential_gt.npy", "metadata.json"]
-                if "potential" in simulation
-                else ["X.npy", "V.npy", "metadata.json"],
+                "files": ["noisy/X.npy", "noisy/f.npy", "ground_truth/X.npy", "ground_truth/f.npy", "ground_truth/grad_f.npy", "metadata.json"]
+                if config["simulation_kind"] == "potential_field"
+                else ["noisy/X.npy", "noisy/V.npy", "ground_truth/X.npy", "ground_truth/V.npy", "metadata.json"],
             },
         )
 

@@ -118,6 +118,7 @@ def make_base_potential_field(field_name: str, n_samples: int = 1000, seed: int 
     return {
         "position": position,
         "velocity": velocity,
+        "gradient": gradient,
         "potential": potential,
         "potential_normalized": normalize_values(potential),
         "name": field_name,
@@ -133,6 +134,7 @@ def make_flat_manifold_potential_field(config: FlatPotentialFieldConfig) -> dict
 
     x_gt = np.asarray(base["position"])
     v_gt = np.asarray(base["velocity"])
+    grad_f_gt = np.asarray(base["gradient"])
     potential_gt = np.asarray(base["potential"])
 
     x_noisy = x_gt + rng.normal(scale=config.position_noise, size=x_gt.shape)
@@ -151,6 +153,9 @@ def make_flat_manifold_potential_field(config: FlatPotentialFieldConfig) -> dict
         "V": v,
         "X_gt": x_gt,
         "V_gt": v_gt,
+        "f": potential_noisy,
+        "f_gt": potential_gt,
+        "grad_f_gt": grad_f_gt,
         "potential": potential_noisy,
         "potential_gt": potential_gt,
         "potential_normalized": normalize_values(potential_noisy),
@@ -193,6 +198,9 @@ def save_npz(simulation: dict[str, object], output_dir: str | Path = "simulation
         "V": simulation["V"],
         "X_gt": simulation["X_gt"],
         "V_gt": simulation["V_gt"],
+        "f": simulation["f"],
+        "f_gt": simulation["f_gt"],
+        "grad_f_gt": simulation["grad_f_gt"],
         "potential": simulation["potential"],
         "potential_gt": simulation["potential_gt"],
         "potential_normalized": simulation["potential_normalized"],

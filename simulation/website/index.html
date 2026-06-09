@@ -161,41 +161,19 @@
 <body>
   <main>
     <aside>
-      <h1>Simulation Vector Fields</h1>
+      <h1>Simulation Fields</h1>
       <p>Small internal reference page for synthesizing the current simulation catalog. Python remains the source of truth for dataset generation.</p>
 
       <label>
-        Field
-        <select id="field">
-          <option value="rotation">flat manifold, rotation field</option>
-          <option value="spiral">flat manifold, spiral field</option>
-          <option value="saddle">flat manifold, saddle field</option>
-          <option value="quadratic_source_sink">flat manifold, quadratic source sink field</option>
-          <option value="radial_source">flat manifold, radial source field</option>
-          <option value="radial_sink">flat manifold, radial sink field</option>
-          <option value="horizontal_shear">flat manifold, horizontal shear field</option>
-          <option value="sinusoidal">flat manifold, sinusoidal field</option>
-          <option value="flat_potential_single_basin">flat manifold, single basin potential</option>
-          <option value="flat_potential_double_well">flat manifold, double well potential</option>
-          <option value="flat_potential_saddle">flat manifold, saddle potential</option>
-          <option value="flat_potential_entropy_like">flat manifold, entropy-like potential</option>
-          <option value="s_curve_velocity_flow">s curve manifold, velocity flow field</option>
-          <option value="swiss_roll_velocity_flow">swiss roll manifold, velocity flow field</option>
-          <option value="half_sphere_velocity_flow">half sphere manifold, velocity flow field</option>
-          <option value="half_sphere_rotation">half sphere manifold, rotation field</option>
-          <option value="half_sphere_spiral">half sphere manifold, spiral field</option>
-          <option value="half_sphere_saddle">half sphere manifold, saddle field</option>
-          <option value="half_sphere_radial_source">half sphere manifold, radial source field</option>
-          <option value="half_sphere_radial_sink">half sphere manifold, radial sink field</option>
-          <option value="half_sphere_quadratic_source_sink">half sphere manifold, quadratic source sink field</option>
-          <option value="saddle_surface_velocity_flow">saddle surface manifold, velocity flow field</option>
-          <option value="saddle_surface_rotation">saddle surface manifold, rotation field</option>
-          <option value="saddle_surface_spiral">saddle surface manifold, spiral field</option>
-          <option value="saddle_surface_saddle">saddle surface manifold, saddle field</option>
-          <option value="saddle_surface_radial_source">saddle surface manifold, radial source field</option>
-          <option value="saddle_surface_radial_sink">saddle surface manifold, radial sink field</option>
-          <option value="saddle_surface_quadratic_source_sink">saddle surface manifold, quadratic source sink field</option>
+        Simulation type
+        <select id="simulationKind">
+          <option value="vector_field">Vector field</option>
+          <option value="potential_field">Potential</option>
         </select>
+      </label>
+      <label>
+        Field
+        <select id="field"></select>
       </label>
       <label>
         Position noise
@@ -258,6 +236,7 @@
   </main>
 
   <script>
+    const simulationKindEl = document.querySelector("#simulationKind");
     const fieldEl = document.querySelector("#field");
     const positionNoiseEl = document.querySelector("#positionNoise");
     const velocityNoiseEl = document.querySelector("#velocityNoise");
@@ -656,15 +635,15 @@
 
       const norm = Math.hypot(gx, gy) || 1;
       const positionNoise = Number(positionNoiseEl.value);
-      const velocityNoise = Number(velocityNoiseEl.value);
+      const potentialNoise = Number(velocityNoiseEl.value);
       return {
         x: x / 1.6 + positionNoise * 0.18 * (rand(i * 41 + 13) - 0.5),
         y: y / 1.6 + positionNoise * 0.18 * (rand(i * 43 + 17) - 0.5),
         z: 0,
-        vx: -gx / norm + velocityNoise * 0.18 * (rand(i * 47 + 19) - 0.5),
-        vy: -gy / norm + velocityNoise * 0.18 * (rand(i * 53 + 23) - 0.5),
+        vx: -gx / norm,
+        vy: -gy / norm,
         vz: 0,
-        potential
+        potential: potential + potentialNoise * (rand(i * 47 + 19) - 0.5)
       };
     }
 
@@ -891,6 +870,18 @@
       ].join("/");
     }
 
+    function populateFieldOptions() {
+      const selectedKind = simulationKindEl.value;
+      const previousValue = fieldEl.value;
+      const entries = Object.entries(catalog).filter(([, item]) => item.simulationKind === selectedKind);
+      fieldEl.innerHTML = entries
+        .map(([key, item]) => `<option value="${key}">${item.label}</option>`)
+        .join("");
+      if (entries.some(([key]) => key === previousValue)) {
+        fieldEl.value = previousValue;
+      }
+    }
+
     function draw() {
       const field = fieldEl.value;
       const item = catalog[field];
@@ -1002,6 +993,7 @@
     }
 
     function startDrag(clientX, clientY) {
+      if (!fieldEl.value) return;
       if (catalog[fieldEl.value].dimension !== 3) return;
       viewport.dragging = true;
       viewport.lastX = clientX;
@@ -1052,6 +1044,7 @@
     }
 
     canvas.addEventListener("wheel", (event) => {
+      if (!fieldEl.value) return;
       if (catalog[fieldEl.value].dimension !== 3) return;
       event.preventDefault();
       viewport.zoom = Math.max(0.65, Math.min(1.7, viewport.zoom - event.deltaY * 0.001));
@@ -1059,7 +1052,12 @@
     }, { passive: false });
 
     generateEl.addEventListener("click", generateData);
+    simulationKindEl.addEventListener("input", () => {
+      populateFieldOptions();
+      draw();
+    });
     [fieldEl, positionNoiseEl, velocityNoiseEl, extraDimsEl, samplesEl].forEach((el) => el.addEventListener("input", draw));
+    populateFieldOptions();
     draw();
   </script>
 </body>

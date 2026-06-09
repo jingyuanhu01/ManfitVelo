@@ -162,6 +162,8 @@ class VelocityManifoldFitter:
     :param bool use_abs_cos: Use absolute cosine in velocity-aware distance.
     :param bool weight_use_abs_cos: Use absolute cosine in directional kernel
         weights.
+    :param velocity_confidence: Optional per-cell confidence in ``W``. Values
+        near zero reduce velocity-aware scoring and directional weighting.
     :param random_state: Random seed for NumPy and PCA.
     :param int candidate_mult: Multiplier for Euclidean candidate neighbors
         before velocity-aware reranking.
@@ -199,6 +201,7 @@ class VelocityManifoldFitter:
         h=0.8,
         use_abs_cos=False,
         weight_use_abs_cos=True,
+        velocity_confidence=None,
         random_state=0,
         candidate_mult=4,
         neighbor_update_freq=1,
@@ -243,6 +246,13 @@ class VelocityManifoldFitter:
         self.gamma = float(gamma)
         self.use_abs_cos = bool(use_abs_cos)
         self.weight_use_abs_cos = bool(weight_use_abs_cos)
+        if velocity_confidence is None:
+            self.velocity_confidence = np.ones(self.n, dtype=float)
+        else:
+            self.velocity_confidence = np.asarray(velocity_confidence, dtype=float)
+            if self.velocity_confidence.shape != (self.n,):
+                raise ValueError("velocity_confidence must have shape (n_cells,)")
+            self.velocity_confidence = np.clip(self.velocity_confidence, 0.0, 1.0)
         self.kappa = float(kappa)
         self.h = float(h)
         self.bandwidth_mode = bandwidth_mode
@@ -292,7 +302,7 @@ class VelocityManifoldFitter:
         c = np.sum(a * b, axis=1) / denom
         return np.abs(c) if use_abs else c
 
-    def _velocity_aware_distance(self, diff, velocity, use_abs_cos=None):
+    def _velocity_aware_distance(self, diff, velocity, use_abs_cos=None, confidence=1.0):
         d0 = np.linalg.norm(diff, axis=1)
         if np.linalg.norm(velocity) < self.eps:
             return d0, np.zeros_like(d0)
@@ -302,7 +312,7 @@ class VelocityManifoldFitter:
 
         Wi = np.repeat(velocity[None, :], diff.shape[0], axis=0)
         cos_val = self._cosine_rows(Wi, diff, use_abs=use_abs_cos)
-        vel_term = 1.0 - self._sigmoid(self.gamma * cos_val)
+        vel_term = 1.0 - self._sigmoid(self.gamma * float(confidence) * cos_val)
         dist = (1.0 - self.theta) * d0 + self.theta * vel_term
         return dist, cos_val
 
@@ -320,7 +330,11 @@ class VelocityManifoldFitter:
             cand = cand[cand != i]
 
             diff = self.X[cand] - self.X[i]
-            score, _ = self._velocity_aware_distance(diff, velocity[i])
+            score, _ = self._velocity_aware_distance(
+                diff,
+                velocity[i],
+                confidence=self.velocity_confidence[i],
+            )
             idx = np.argsort(score)[: self.k]
             neighbors[i] = cand[idx]
 
@@ -352,7 +366,10 @@ class VelocityManifoldFitter:
         else:
             cos_for_direction = cos_val
 
+        confidence = self.velocity_confidence[:, None]
+        cos_for_direction = confidence * cos_for_direction
         cos_for_distance = np.abs(cos_val) if self.use_abs_cos else cos_val
+        cos_for_distance = confidence * cos_for_distance
         vel_term = 1.0 - self._sigmoid(self.gamma * cos_for_distance)
         dist = (1.0 - self.theta) * diff_norm + self.theta * vel_term
 

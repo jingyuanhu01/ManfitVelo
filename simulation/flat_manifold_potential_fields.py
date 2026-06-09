@@ -1,7 +1,9 @@
 """Flat manifold potential-field data generation.
 
-Each potential field defines a scalar potential U(x, y). The generated velocity
-is the gradient-flow direction V = -grad U. No manifold fitting is run here.
+Each potential defines a scalar U(x, y). The generated velocity is the
+gradient-flow direction V = -grad U. Potential simulations add noise to the
+observed scalar potential, not directly to the velocity vectors. No manifold
+fitting is run here.
 """
 
 from __future__ import annotations
@@ -21,10 +23,10 @@ POTENTIAL_FIELD_NAMES = (
 )
 
 POTENTIAL_FIELD_LABELS = {
-    "single_basin": "flat manifold, single basin potential field",
-    "double_well": "flat manifold, double well potential field",
-    "saddle": "flat manifold, saddle potential field",
-    "entropy_like": "flat manifold, entropy-like potential field",
+    "single_basin": "flat manifold, single basin potential",
+    "double_well": "flat manifold, double well potential",
+    "saddle": "flat manifold, saddle potential",
+    "entropy_like": "flat manifold, entropy-like potential",
 }
 
 
@@ -35,13 +37,13 @@ class FlatPotentialFieldConfig:
     field_name: str = "single_basin"
     n_samples: int = 1000
     position_noise: float = 0.3
-    velocity_noise: float = 0.3
+    potential_noise: float = 0.3
     extra_dims: int = 5
     seed: int = 42
 
     @property
     def simulation_name(self) -> str:
-        return f"flat_manifold__{self.field_name}_potential_field"
+        return f"flat_manifold__{self.field_name}_potential"
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self) | {"simulation_name": self.simulation_name}
@@ -124,22 +126,23 @@ def make_base_potential_field(field_name: str, n_samples: int = 1000, seed: int 
 
 
 def make_flat_manifold_potential_field(config: FlatPotentialFieldConfig) -> dict[str, object]:
-    """Generate clean, noisy, and extra-dimensional flat potential-field data."""
+    """Generate clean, noisy, and extra-dimensional flat potential data."""
 
     base = make_base_potential_field(config.field_name, config.n_samples, config.seed)
     rng = np.random.default_rng(config.seed)
 
     x_gt = np.asarray(base["position"])
     v_gt = np.asarray(base["velocity"])
+    potential_gt = np.asarray(base["potential"])
 
     x_noisy = x_gt + rng.normal(scale=config.position_noise, size=x_gt.shape)
-    v_noisy = v_gt + rng.normal(scale=config.velocity_noise, size=v_gt.shape)
+    potential_noisy = potential_gt + rng.normal(scale=config.potential_noise, size=potential_gt.shape)
 
     x_dummy = rng.normal(scale=config.position_noise, size=(x_gt.shape[0], config.extra_dims))
-    v_dummy = rng.normal(scale=config.velocity_noise, size=(v_gt.shape[0], config.extra_dims))
+    v_dummy = np.zeros((v_gt.shape[0], config.extra_dims))
 
     x = np.hstack([x_noisy, x_dummy])
-    v = np.hstack([v_noisy, v_dummy])
+    v = np.hstack([v_gt, v_dummy])
 
     return {
         "config": config.to_dict(),
@@ -148,19 +151,21 @@ def make_flat_manifold_potential_field(config: FlatPotentialFieldConfig) -> dict
         "V": v,
         "X_gt": x_gt,
         "V_gt": v_gt,
-        "potential": base["potential"],
-        "potential_normalized": base["potential_normalized"],
+        "potential": potential_noisy,
+        "potential_gt": potential_gt,
+        "potential_normalized": normalize_values(potential_noisy),
+        "potential_gt_normalized": base["potential_normalized"],
     }
 
 
 def make_all_flat_manifold_potential_fields(
     n_samples: int = 1000,
     position_noise: float = 0.3,
-    velocity_noise: float = 0.3,
+    potential_noise: float = 0.3,
     extra_dims: int = 5,
     seed: int = 42,
 ) -> dict[str, dict[str, object]]:
-    """Generate all flat potential-field simulations."""
+    """Generate all flat potential simulations."""
 
     return {
         field_name: make_flat_manifold_potential_field(
@@ -168,7 +173,7 @@ def make_all_flat_manifold_potential_fields(
                 field_name=field_name,
                 n_samples=n_samples,
                 position_noise=position_noise,
-                velocity_noise=velocity_noise,
+                potential_noise=potential_noise,
                 extra_dims=extra_dims,
                 seed=seed,
             )
@@ -189,7 +194,9 @@ def save_npz(simulation: dict[str, object], output_dir: str | Path = "simulation
         "X_gt": simulation["X_gt"],
         "V_gt": simulation["V_gt"],
         "potential": simulation["potential"],
+        "potential_gt": simulation["potential_gt"],
         "potential_normalized": simulation["potential_normalized"],
+        "potential_gt_normalized": simulation["potential_gt_normalized"],
     }
     np.savez_compressed(path, **payload)
     path.with_suffix(".json").write_text(json.dumps(simulation["config"], indent=2) + "\n")

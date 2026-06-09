@@ -1,8 +1,8 @@
-"""Generate flat manifold potential-field datasets.
+"""Generate flat manifold potential datasets.
 
 Examples:
     python simulation/generate_flat_manifold_potential_fields.py --field all
-    python simulation/generate_flat_manifold_potential_fields.py --field double_well --position-noise 0.2
+    python simulation/generate_flat_manifold_potential_fields.py --field double_well --position-noise 0.2 --potential-noise 0.1
 """
 
 from __future__ import annotations
@@ -29,7 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--field", choices=("all", *POTENTIAL_FIELD_NAMES), default="all")
     parser.add_argument("--n-samples", type=int, default=1000)
     parser.add_argument("--position-noise", type=float, default=0.3)
-    parser.add_argument("--velocity-noise", type=float, default=0.3)
+    parser.add_argument("--potential-noise", type=float, default=0.3)
+    parser.add_argument("--velocity-noise", type=float, dest="potential_noise", help=argparse.SUPPRESS)
     parser.add_argument("--extra-dims", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-dir", type=Path, default=Path("simulation/outputs"))
@@ -43,7 +44,7 @@ def main() -> None:
         simulations = make_all_flat_manifold_potential_fields(
             n_samples=args.n_samples,
             position_noise=args.position_noise,
-            velocity_noise=args.velocity_noise,
+            potential_noise=args.potential_noise,
             extra_dims=args.extra_dims,
             seed=args.seed,
         )
@@ -53,7 +54,7 @@ def main() -> None:
                 field_name=args.field,
                 n_samples=args.n_samples,
                 position_noise=args.position_noise,
-                velocity_noise=args.velocity_noise,
+                potential_noise=args.potential_noise,
                 extra_dims=args.extra_dims,
                 seed=args.seed,
             )

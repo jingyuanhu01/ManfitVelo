@@ -175,10 +175,10 @@
           <option value="radial_sink">flat manifold, radial sink field</option>
           <option value="horizontal_shear">flat manifold, horizontal shear field</option>
           <option value="sinusoidal">flat manifold, sinusoidal field</option>
-          <option value="flat_potential_single_basin">flat manifold, single basin potential field</option>
-          <option value="flat_potential_double_well">flat manifold, double well potential field</option>
-          <option value="flat_potential_saddle">flat manifold, saddle potential field</option>
-          <option value="flat_potential_entropy_like">flat manifold, entropy-like potential field</option>
+          <option value="flat_potential_single_basin">flat manifold, single basin potential</option>
+          <option value="flat_potential_double_well">flat manifold, double well potential</option>
+          <option value="flat_potential_saddle">flat manifold, saddle potential</option>
+          <option value="flat_potential_entropy_like">flat manifold, entropy-like potential</option>
           <option value="s_curve_velocity_flow">s curve manifold, velocity flow field</option>
           <option value="swiss_roll_velocity_flow">swiss roll manifold, velocity flow field</option>
           <option value="half_sphere_velocity_flow">half sphere manifold, velocity flow field</option>
@@ -202,7 +202,7 @@
         <input id="positionNoise" type="number" min="0" max="5" step="0.05" value="0.3">
       </label>
       <label>
-        Velocity noise
+        <span id="secondNoiseLabel">Velocity noise</span>
         <input id="velocityNoise" type="number" min="0" max="5" step="0.05" value="0.3">
       </label>
       <label>
@@ -239,10 +239,10 @@
         <div class="card"><strong>flat manifold, radial sink field</strong><p>Inward radial field: <code>[-x, -y]</code>.</p></div>
         <div class="card"><strong>flat manifold, horizontal shear field</strong><p>Horizontal shear by vertical position: <code>[y, 0]</code>.</p></div>
         <div class="card"><strong>flat manifold, sinusoidal field</strong><p>Smooth periodic field: <code>[sin(pi y), cos(pi x)]</code>.</p></div>
-        <div class="card"><strong>flat manifold, single basin potential field</strong><p>Potential color from <code>0.5(x^2 + y^2)</code>; arrows follow <code>-grad U</code>.</p></div>
-        <div class="card"><strong>flat manifold, double well potential field</strong><p>Two minima along the horizontal axis with vertical confinement.</p></div>
-        <div class="card"><strong>flat manifold, saddle potential field</strong><p>Saddle potential <code>0.5(x^2 - y^2)</code> with gradient flow arrows.</p></div>
-        <div class="card"><strong>flat manifold, entropy-like potential field</strong><p>Radial <code>r^2 log(r^2)</code>-style potential with gradient flow arrows.</p></div>
+        <div class="card"><strong>flat manifold, single basin potential</strong><p>Potential color from <code>0.5(x^2 + y^2)</code>; arrows follow <code>-grad U</code>.</p></div>
+        <div class="card"><strong>flat manifold, double well potential</strong><p>Two minima along the horizontal axis with vertical confinement.</p></div>
+        <div class="card"><strong>flat manifold, saddle potential</strong><p>Saddle potential <code>0.5(x^2 - y^2)</code> with gradient flow arrows.</p></div>
+        <div class="card"><strong>flat manifold, entropy-like potential</strong><p>Radial <code>r^2 log(r^2)</code>-style potential with gradient flow arrows.</p></div>
         <div class="card"><strong>s curve manifold, velocity flow field</strong><p>3D S-curve with tangent flow along the rolled coordinate.</p></div>
         <div class="card"><strong>swiss roll manifold, velocity flow field</strong><p>3D Swiss roll with tangent flow along the spiral coordinate.</p></div>
         <div class="card"><strong>half sphere manifold, velocity flow field</strong><p>Upper hemisphere with tangent rotation around the vertical axis.</p></div>
@@ -261,6 +261,7 @@
     const fieldEl = document.querySelector("#field");
     const positionNoiseEl = document.querySelector("#positionNoise");
     const velocityNoiseEl = document.querySelector("#velocityNoise");
+    const secondNoiseLabelEl = document.querySelector("#secondNoiseLabel");
     const extraDimsEl = document.querySelector("#extraDims");
     const samplesEl = document.querySelector("#samples");
     const generateEl = document.querySelector("#generate");
@@ -352,8 +353,8 @@
         module: "simulation/flat_manifold_vector_fields.py"
       },
       flat_potential_single_basin: {
-        label: "flat manifold, single basin potential field",
-        simulationName: "flat_manifold__single_basin_potential_field",
+        label: "flat manifold, single basin potential",
+        simulationName: "flat_manifold__single_basin_potential",
         manifold: "flat",
         fieldName: "single_basin",
         simulationKind: "potential_field",
@@ -362,8 +363,8 @@
         module: "simulation/flat_manifold_potential_fields.py"
       },
       flat_potential_double_well: {
-        label: "flat manifold, double well potential field",
-        simulationName: "flat_manifold__double_well_potential_field",
+        label: "flat manifold, double well potential",
+        simulationName: "flat_manifold__double_well_potential",
         manifold: "flat",
         fieldName: "double_well",
         simulationKind: "potential_field",
@@ -372,8 +373,8 @@
         module: "simulation/flat_manifold_potential_fields.py"
       },
       flat_potential_saddle: {
-        label: "flat manifold, saddle potential field",
-        simulationName: "flat_manifold__saddle_potential_field",
+        label: "flat manifold, saddle potential",
+        simulationName: "flat_manifold__saddle_potential",
         manifold: "flat",
         fieldName: "saddle",
         simulationKind: "potential_field",
@@ -382,8 +383,8 @@
         module: "simulation/flat_manifold_potential_fields.py"
       },
       flat_potential_entropy_like: {
-        label: "flat manifold, entropy-like potential field",
-        simulationName: "flat_manifold__entropy_like_potential_field",
+        label: "flat manifold, entropy-like potential",
+        simulationName: "flat_manifold__entropy_like_potential",
         manifold: "flat",
         fieldName: "entropy_like",
         simulationKind: "potential_field",
@@ -883,9 +884,10 @@
     }
 
     function outputDirFor(item) {
+      const secondNoiseName = item.simulationKind === "potential_field" ? "potential_noise" : "velocity_noise";
       return [
         "simulation/data",
-        `${item.simulationName}_position_noise_${cleanNumber(positionNoiseEl.value)}_velocity_noise_${cleanNumber(velocityNoiseEl.value)}_extra_dims_${Number(extraDimsEl.value)}`
+        `${item.simulationName}_position_noise_${cleanNumber(positionNoiseEl.value)}_${secondNoiseName}_${cleanNumber(velocityNoiseEl.value)}_extra_dims_${Number(extraDimsEl.value)}`
       ].join("/");
     }
 
@@ -894,6 +896,7 @@
       const item = catalog[field];
       const n = Math.min(Number(samplesEl.value), 2600);
       const simName = item.simulationName;
+      secondNoiseLabelEl.textContent = item.simulationKind === "potential_field" ? "Potential noise" : "Velocity noise";
       titleEl.textContent = simName;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -937,7 +940,7 @@
         ["dimension", item.dimension],
         ["n_samples", samplesEl.value],
         ["position_noise", positionNoiseEl.value],
-        ["velocity_noise", velocityNoiseEl.value],
+        [item.simulationKind === "potential_field" ? "potential_noise" : "velocity_noise", velocityNoiseEl.value],
         ["extra_dims", extraDimsEl.value],
         ["output_dir", outputDirFor(item)],
         ["script", item.script],
@@ -948,7 +951,7 @@
 
     function currentGenerationPayload() {
       const item = catalog[fieldEl.value];
-      return {
+      const payload = {
         key: fieldEl.value,
         simulation_name: item.simulationName,
         simulation_kind: item.simulationKind,
@@ -957,10 +960,15 @@
         dimension: item.dimension,
         n_samples: Number(samplesEl.value),
         position_noise: Number(positionNoiseEl.value),
-        velocity_noise: Number(velocityNoiseEl.value),
         extra_dims: Number(extraDimsEl.value),
         seed: 42
       };
+      if (item.simulationKind === "potential_field") {
+        payload.potential_noise = Number(velocityNoiseEl.value);
+      } else {
+        payload.velocity_noise = Number(velocityNoiseEl.value);
+      }
+      return payload;
     }
 
     function setGenerateStatus(message, kind = "") {
@@ -982,7 +990,7 @@
         if (!response.ok) {
           throw new Error(result.error || `Generation failed with HTTP ${response.status}`);
         }
-        setGenerateStatus(`Saved X.npy and V.npy to ${result.output_dir}`, "ok");
+        setGenerateStatus(`Saved ${result.files.join(", ")} to ${result.output_dir}`, "ok");
       } catch (error) {
         setGenerateStatus(
           `Local generator unavailable. Run: python simulation/serve_website.py. ${error.message}`,

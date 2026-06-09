@@ -54,10 +54,11 @@ def safe_dir_name(config: dict[str, Any]) -> str:
     name = str(config["simulation_name"])
     if not re.fullmatch(r"[A-Za-z0-9_]+", name):
         raise ValueError("Invalid simulation_name")
+    second_noise_name = "potential_noise" if config["simulation_kind"] == "potential_field" else "velocity_noise"
     return (
         f"{name}"
         f"_position_noise_{clean_number(config['position_noise'])}"
-        f"_velocity_noise_{clean_number(config['velocity_noise'])}"
+        f"_{second_noise_name}_{clean_number(config[second_noise_name])}"
         f"_extra_dims_{config['extra_dims']}"
     )
 
@@ -71,14 +72,13 @@ def parse_payload(raw_body: bytes) -> dict[str, Any]:
     n_samples = int(payload["n_samples"])
     extra_dims = int(payload["extra_dims"])
     position_noise = float(payload["position_noise"])
-    velocity_noise = float(payload["velocity_noise"])
     seed = int(payload.get("seed", 42))
 
     if n_samples <= 0:
         raise ValueError("n_samples must be positive")
     if extra_dims < 0:
         raise ValueError("extra_dims must be non-negative")
-    if position_noise < 0 or velocity_noise < 0:
+    if position_noise < 0:
         raise ValueError("Noise values must be non-negative")
 
     if manifold == "flat":
@@ -86,10 +86,18 @@ def parse_payload(raw_body: bytes) -> dict[str, Any]:
         if simulation_kind == "potential_field":
             if field_name not in POTENTIAL_FIELD_NAMES:
                 raise ValueError(f"Unknown flat potential field: {field_name}")
-            simulation_name = f"flat_manifold__{field_name}_potential_field"
+            potential_noise = float(payload.get("potential_noise", payload.get("velocity_noise", 0.0)))
+            if potential_noise < 0:
+                raise ValueError("Noise values must be non-negative")
+            velocity_noise = None
+            simulation_name = f"flat_manifold__{field_name}_potential"
         elif simulation_kind == "vector_field":
             if field_name not in FIELD_NAMES:
                 raise ValueError(f"Unknown flat field: {field_name}")
+            velocity_noise = float(payload["velocity_noise"])
+            if velocity_noise < 0:
+                raise ValueError("Noise values must be non-negative")
+            potential_noise = None
             simulation_name = f"flat_manifold__{field_name}_vector_field"
         else:
             raise ValueError(f"Unknown simulation_kind: {simulation_kind}")
@@ -99,6 +107,10 @@ def parse_payload(raw_body: bytes) -> dict[str, Any]:
             raise ValueError(f"Unknown manifold: {manifold}")
         if field_name not in MANIFOLD_FIELD_NAMES[manifold]:
             raise ValueError(f"{manifold} does not support field {field_name}")
+        velocity_noise = float(payload["velocity_noise"])
+        if velocity_noise < 0:
+            raise ValueError("Noise values must be non-negative")
+        potential_noise = None
         simulation_name = f"{manifold}_manifold__{field_name}_vector_field"
 
     requested_name = str(payload.get("simulation_name", simulation_name))
@@ -112,10 +124,13 @@ def parse_payload(raw_body: bytes) -> dict[str, Any]:
         "field_name": field_name,
         "n_samples": n_samples,
         "position_noise": position_noise,
-        "velocity_noise": velocity_noise,
         "extra_dims": extra_dims,
         "seed": seed,
-    }
+    } | (
+        {"potential_noise": potential_noise}
+        if simulation_kind == "potential_field"
+        else {"velocity_noise": velocity_noise}
+    )
 
 
 def generate_simulation(config: dict[str, Any]) -> dict[str, object]:
@@ -127,7 +142,7 @@ def generate_simulation(config: dict[str, Any]) -> dict[str, object]:
                 field_name=config["field_name"],
                 n_samples=config["n_samples"],
                 position_noise=config["position_noise"],
-                velocity_noise=config["velocity_noise"],
+                potential_noise=config["potential_noise"],
                 extra_dims=config["extra_dims"],
                 seed=config["seed"],
             )
@@ -169,6 +184,8 @@ def write_simulation(simulation: dict[str, object], config: dict[str, Any]) -> P
     np.save(output_dir / "V.npy", simulation["V"])
     if "potential" in simulation:
         np.save(output_dir / "potential.npy", simulation["potential"])
+    if "potential_gt" in simulation:
+        np.save(output_dir / "potential_gt.npy", simulation["potential_gt"])
     (output_dir / "metadata.json").write_text(
         json.dumps(simulation["config"], indent=2) + "\n",
         encoding="utf-8",
@@ -209,7 +226,7 @@ class SimulationRequestHandler(SimpleHTTPRequestHandler):
             {
                 "ok": True,
                 "output_dir": str(output_dir.relative_to(ROOT)),
-                "files": ["X.npy", "V.npy", "potential.npy", "metadata.json"]
+                "files": ["X.npy", "V.npy", "potential.npy", "potential_gt.npy", "metadata.json"]
                 if "potential" in simulation
                 else ["X.npy", "V.npy", "metadata.json"],
             },

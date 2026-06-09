@@ -18,6 +18,7 @@ MANIFOLD_NAMES = (
     "s_curve",
     "swiss_roll",
     "half_sphere",
+    "saddle_surface",
 )
 
 VECTOR_FIELD_NAMES = (
@@ -34,12 +35,14 @@ MANIFOLD_FIELD_NAMES = {
     "s_curve": ("velocity_flow",),
     "swiss_roll": ("velocity_flow",),
     "half_sphere": VECTOR_FIELD_NAMES,
+    "saddle_surface": VECTOR_FIELD_NAMES,
 }
 
 MANIFOLD_LABELS = {
     "s_curve": "s curve manifold, velocity flow field",
     "swiss_roll": "swiss roll manifold, velocity flow field",
     "half_sphere": "half sphere manifold, velocity flow field",
+    "saddle_surface": "saddle surface manifold, velocity flow field",
 }
 
 FIELD_LABELS = {
@@ -129,6 +132,45 @@ def make_half_sphere_field(position: np.ndarray, field_name: str) -> np.ndarray:
     return project_to_tangent(position, ambient)
 
 
+def planar_field(horizontal_x: np.ndarray, horizontal_z: np.ndarray, field_name: str) -> tuple[np.ndarray, np.ndarray]:
+    """Evaluate the shared planar field family in horizontal coordinates."""
+
+    if field_name == "velocity_flow" or field_name == "rotation":
+        fx = -horizontal_z
+        fz = horizontal_x
+    elif field_name == "spiral":
+        fx = horizontal_x - horizontal_z
+        fz = horizontal_x + horizontal_z
+    elif field_name == "saddle":
+        c = np.sqrt(0.5)
+        u = c * horizontal_x + c * horizontal_z
+        v = -c * horizontal_x + c * horizontal_z
+        fx = c * (-u) - c * v
+        fz = c * (-u) + c * v
+    elif field_name == "radial_source":
+        fx = horizontal_x
+        fz = horizontal_z
+    elif field_name == "radial_sink":
+        fx = -horizontal_x
+        fz = -horizontal_z
+    elif field_name == "quadratic_source_sink":
+        fx = horizontal_x * horizontal_x - horizontal_z * horizontal_z - 0.45
+        fz = 2.0 * horizontal_x * horizontal_z
+    else:
+        raise ValueError(f"field_name must be one of {VECTOR_FIELD_NAMES}")
+    return fx, fz
+
+
+def make_saddle_surface_field(position: np.ndarray, field_name: str, curvature: float = 0.55) -> np.ndarray:
+    """Lift the shared planar field family onto a negative-curvature saddle surface."""
+
+    horizontal_x = position[:, 0]
+    horizontal_z = position[:, 2]
+    fx, fz = planar_field(horizontal_x, horizontal_z, field_name)
+    fy = 2.0 * curvature * (horizontal_x * fx - horizontal_z * fz)
+    return np.stack([fx, fy, fz], axis=1)
+
+
 def make_base_flow(
     manifold_name: str,
     n_samples: int = 1000,
@@ -180,7 +222,7 @@ def make_base_flow(
         )
         time = (t - t.min()) / (t.max() - t.min())
 
-    else:
+    elif manifold_name == "half_sphere":
         theta = rng.uniform(0.0, 2.0 * np.pi, size=n_samples)
         vertical = rng.uniform(0.0, 1.0, size=n_samples)
         radius = np.sqrt(1.0 - vertical * vertical)
@@ -190,6 +232,17 @@ def make_base_flow(
         position = np.stack([horizontal_x, vertical, horizontal_z], axis=1)
         velocity = make_half_sphere_field(position, field_name)
         time = theta / (2.0 * np.pi)
+
+    else:
+        horizontal_x = rng.uniform(-1.2, 1.2, size=n_samples)
+        horizontal_z = rng.uniform(-1.2, 1.2, size=n_samples)
+        curvature = 0.55
+        vertical = curvature * (horizontal_x * horizontal_x - horizontal_z * horizontal_z)
+
+        position = np.stack([horizontal_x, vertical, horizontal_z], axis=1)
+        velocity = make_saddle_surface_field(position, field_name, curvature=curvature)
+        angle = np.arctan2(horizontal_z, horizontal_x)
+        time = ((angle + 2.0 * np.pi) % (2.0 * np.pi)) / (2.0 * np.pi)
 
     position, velocity = scale_to_unit_box_3d(position, velocity)
     velocity = normalize_rows(velocity)

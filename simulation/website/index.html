@@ -188,6 +188,13 @@
           <option value="half_sphere_radial_source">half sphere manifold, radial source field</option>
           <option value="half_sphere_radial_sink">half sphere manifold, radial sink field</option>
           <option value="half_sphere_quadratic_source_sink">half sphere manifold, quadratic source sink field</option>
+          <option value="saddle_surface_velocity_flow">saddle surface manifold, velocity flow field</option>
+          <option value="saddle_surface_rotation">saddle surface manifold, rotation field</option>
+          <option value="saddle_surface_spiral">saddle surface manifold, spiral field</option>
+          <option value="saddle_surface_saddle">saddle surface manifold, saddle field</option>
+          <option value="saddle_surface_radial_source">saddle surface manifold, radial source field</option>
+          <option value="saddle_surface_radial_sink">saddle surface manifold, radial sink field</option>
+          <option value="saddle_surface_quadratic_source_sink">saddle surface manifold, quadratic source sink field</option>
         </select>
       </label>
       <label>
@@ -245,6 +252,7 @@
         <div class="card"><strong>half sphere manifold, radial source field</strong><p>Meridian-like outward source flow on the curved surface.</p></div>
         <div class="card"><strong>half sphere manifold, radial sink field</strong><p>Meridian-like inward sink flow on the curved surface.</p></div>
         <div class="card"><strong>half sphere manifold, quadratic source sink field</strong><p>Quadratic source/sink field projected onto the half-sphere.</p></div>
+        <div class="card"><strong>saddle surface manifold fields</strong><p>Same vector-field family lifted onto a negative-curvature saddle surface.</p></div>
       </div>
     </section>
   </main>
@@ -472,6 +480,76 @@
         dimension: 3,
         script: "simulation/generate_manifold_velocity_flows.py",
         module: "simulation/manifold_velocity_flows.py"
+      },
+      saddle_surface_velocity_flow: {
+        label: "saddle surface manifold, velocity flow field",
+        simulationName: "saddle_surface_manifold__velocity_flow_vector_field",
+        manifold: "saddle_surface",
+        fieldName: "velocity_flow",
+        simulationKind: "vector_field",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      saddle_surface_rotation: {
+        label: "saddle surface manifold, rotation field",
+        simulationName: "saddle_surface_manifold__rotation_vector_field",
+        manifold: "saddle_surface",
+        fieldName: "rotation",
+        simulationKind: "vector_field",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      saddle_surface_spiral: {
+        label: "saddle surface manifold, spiral field",
+        simulationName: "saddle_surface_manifold__spiral_vector_field",
+        manifold: "saddle_surface",
+        fieldName: "spiral",
+        simulationKind: "vector_field",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      saddle_surface_saddle: {
+        label: "saddle surface manifold, saddle field",
+        simulationName: "saddle_surface_manifold__saddle_vector_field",
+        manifold: "saddle_surface",
+        fieldName: "saddle",
+        simulationKind: "vector_field",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      saddle_surface_radial_source: {
+        label: "saddle surface manifold, radial source field",
+        simulationName: "saddle_surface_manifold__radial_source_vector_field",
+        manifold: "saddle_surface",
+        fieldName: "radial_source",
+        simulationKind: "vector_field",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      saddle_surface_radial_sink: {
+        label: "saddle surface manifold, radial sink field",
+        simulationName: "saddle_surface_manifold__radial_sink_vector_field",
+        manifold: "saddle_surface",
+        fieldName: "radial_sink",
+        simulationKind: "vector_field",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
+      },
+      saddle_surface_quadratic_source_sink: {
+        label: "saddle surface manifold, quadratic source sink field",
+        simulationName: "saddle_surface_manifold__quadratic_source_sink_vector_field",
+        manifold: "saddle_surface",
+        fieldName: "quadratic_source_sink",
+        simulationKind: "vector_field",
+        dimension: 3,
+        script: "simulation/generate_manifold_velocity_flows.py",
+        module: "simulation/manifold_velocity_flows.py"
       }
     };
 
@@ -632,6 +710,40 @@
       return { vx, vy, vz };
     }
 
+    function saddleSurfaceVector(x, z, fieldName) {
+      let fx;
+      let fz;
+      if (fieldName === "velocity_flow" || fieldName === "rotation") {
+        fx = -z;
+        fz = x;
+      } else if (fieldName === "spiral") {
+        fx = x - z;
+        fz = x + z;
+      } else if (fieldName === "saddle") {
+        const c = Math.SQRT1_2;
+        const u = c * x + c * z;
+        const v = -c * x + c * z;
+        fx = c * (-u) - c * v;
+        fz = c * (-u) + c * v;
+      } else if (fieldName === "radial_source") {
+        fx = x;
+        fz = z;
+      } else if (fieldName === "radial_sink") {
+        fx = -x;
+        fz = -z;
+      } else {
+        fx = x * x - z * z - 0.45;
+        fz = 2 * x * z;
+      }
+
+      const curvature = 0.55;
+      return {
+        vx: fx,
+        vy: 2 * curvature * (x * fx - z * fz),
+        vz: fz
+      };
+    }
+
     function manifoldPoint(i, n, field) {
       const u = rand(i * 17 + 3);
       const h = 2 * rand(i * 23 + 7) - 1;
@@ -660,7 +772,7 @@
         z = rawZ / 15;
         vx = (Math.cos(t) - t * Math.sin(t)) / 15;
         vz = (Math.sin(t) + t * Math.cos(t)) / 15;
-      } else {
+      } else if (catalog[field].manifold === "half_sphere") {
         const theta = 2 * Math.PI * u;
         const vertical = rand(i * 31 + 11);
         const radius = Math.sqrt(1 - vertical * vertical);
@@ -668,6 +780,14 @@
         y = vertical * 0.78 - 0.28;
         z = radius * Math.sin(theta) * 0.78;
         const vector = halfSphereVector(x, y, z, catalog[field].fieldName);
+        vx = vector.vx;
+        vy = vector.vy;
+        vz = vector.vz;
+      } else {
+        x = 1.55 * (rand(i * 19 + 5) - 0.5);
+        z = 1.55 * (rand(i * 31 + 11) - 0.5);
+        y = 0.55 * (x * x - z * z);
+        const vector = saddleSurfaceVector(x, z, catalog[field].fieldName);
         vx = vector.vx;
         vy = vector.vy;
         vz = vector.vz;

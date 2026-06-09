@@ -175,6 +175,10 @@
           <option value="radial_sink">flat manifold, radial sink field</option>
           <option value="horizontal_shear">flat manifold, horizontal shear field</option>
           <option value="sinusoidal">flat manifold, sinusoidal field</option>
+          <option value="flat_potential_single_basin">flat manifold, single basin potential field</option>
+          <option value="flat_potential_double_well">flat manifold, double well potential field</option>
+          <option value="flat_potential_saddle">flat manifold, saddle potential field</option>
+          <option value="flat_potential_entropy_like">flat manifold, entropy-like potential field</option>
           <option value="s_curve_velocity_flow">s curve manifold, velocity flow field</option>
           <option value="swiss_roll_velocity_flow">swiss roll manifold, velocity flow field</option>
           <option value="half_sphere_velocity_flow">half sphere manifold, velocity flow field</option>
@@ -228,6 +232,10 @@
         <div class="card"><strong>flat manifold, radial sink field</strong><p>Inward radial field: <code>[-x, -y]</code>.</p></div>
         <div class="card"><strong>flat manifold, horizontal shear field</strong><p>Horizontal shear by vertical position: <code>[y, 0]</code>.</p></div>
         <div class="card"><strong>flat manifold, sinusoidal field</strong><p>Smooth periodic field: <code>[sin(pi y), cos(pi x)]</code>.</p></div>
+        <div class="card"><strong>flat manifold, single basin potential field</strong><p>Potential color from <code>0.5(x^2 + y^2)</code>; arrows follow <code>-grad U</code>.</p></div>
+        <div class="card"><strong>flat manifold, double well potential field</strong><p>Two minima along the horizontal axis with vertical confinement.</p></div>
+        <div class="card"><strong>flat manifold, saddle potential field</strong><p>Saddle potential <code>0.5(x^2 - y^2)</code> with gradient flow arrows.</p></div>
+        <div class="card"><strong>flat manifold, entropy-like potential field</strong><p>Radial <code>r^2 log(r^2)</code>-style potential with gradient flow arrows.</p></div>
         <div class="card"><strong>s curve manifold, velocity flow field</strong><p>3D S-curve with tangent flow along the rolled coordinate.</p></div>
         <div class="card"><strong>swiss roll manifold, velocity flow field</strong><p>3D Swiss roll with tangent flow along the spiral coordinate.</p></div>
         <div class="card"><strong>half sphere manifold, velocity flow field</strong><p>Upper hemisphere with tangent rotation around the vertical axis.</p></div>
@@ -260,6 +268,7 @@
         simulationName: "flat_manifold__rotation_vector_field",
         manifold: "flat",
         fieldName: "rotation",
+        simulationKind: "vector_field",
         dimension: 2,
         script: "simulation/generate_flat_manifold_vector_fields.py",
         module: "simulation/flat_manifold_vector_fields.py"
@@ -269,6 +278,7 @@
         simulationName: "flat_manifold__spiral_vector_field",
         manifold: "flat",
         fieldName: "spiral",
+        simulationKind: "vector_field",
         dimension: 2,
         script: "simulation/generate_flat_manifold_vector_fields.py",
         module: "simulation/flat_manifold_vector_fields.py"
@@ -278,6 +288,7 @@
         simulationName: "flat_manifold__saddle_vector_field",
         manifold: "flat",
         fieldName: "saddle",
+        simulationKind: "vector_field",
         dimension: 2,
         script: "simulation/generate_flat_manifold_vector_fields.py",
         module: "simulation/flat_manifold_vector_fields.py"
@@ -287,6 +298,7 @@
         simulationName: "flat_manifold__quadratic_source_sink_vector_field",
         manifold: "flat",
         fieldName: "quadratic_source_sink",
+        simulationKind: "vector_field",
         dimension: 2,
         script: "simulation/generate_flat_manifold_vector_fields.py",
         module: "simulation/flat_manifold_vector_fields.py"
@@ -296,6 +308,7 @@
         simulationName: "flat_manifold__radial_source_vector_field",
         manifold: "flat",
         fieldName: "radial_source",
+        simulationKind: "vector_field",
         dimension: 2,
         script: "simulation/generate_flat_manifold_vector_fields.py",
         module: "simulation/flat_manifold_vector_fields.py"
@@ -305,6 +318,7 @@
         simulationName: "flat_manifold__radial_sink_vector_field",
         manifold: "flat",
         fieldName: "radial_sink",
+        simulationKind: "vector_field",
         dimension: 2,
         script: "simulation/generate_flat_manifold_vector_fields.py",
         module: "simulation/flat_manifold_vector_fields.py"
@@ -314,6 +328,7 @@
         simulationName: "flat_manifold__horizontal_shear_vector_field",
         manifold: "flat",
         fieldName: "horizontal_shear",
+        simulationKind: "vector_field",
         dimension: 2,
         script: "simulation/generate_flat_manifold_vector_fields.py",
         module: "simulation/flat_manifold_vector_fields.py"
@@ -323,15 +338,57 @@
         simulationName: "flat_manifold__sinusoidal_vector_field",
         manifold: "flat",
         fieldName: "sinusoidal",
+        simulationKind: "vector_field",
         dimension: 2,
         script: "simulation/generate_flat_manifold_vector_fields.py",
         module: "simulation/flat_manifold_vector_fields.py"
+      },
+      flat_potential_single_basin: {
+        label: "flat manifold, single basin potential field",
+        simulationName: "flat_manifold__single_basin_potential_field",
+        manifold: "flat",
+        fieldName: "single_basin",
+        simulationKind: "potential_field",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_potential_fields.py",
+        module: "simulation/flat_manifold_potential_fields.py"
+      },
+      flat_potential_double_well: {
+        label: "flat manifold, double well potential field",
+        simulationName: "flat_manifold__double_well_potential_field",
+        manifold: "flat",
+        fieldName: "double_well",
+        simulationKind: "potential_field",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_potential_fields.py",
+        module: "simulation/flat_manifold_potential_fields.py"
+      },
+      flat_potential_saddle: {
+        label: "flat manifold, saddle potential field",
+        simulationName: "flat_manifold__saddle_potential_field",
+        manifold: "flat",
+        fieldName: "saddle",
+        simulationKind: "potential_field",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_potential_fields.py",
+        module: "simulation/flat_manifold_potential_fields.py"
+      },
+      flat_potential_entropy_like: {
+        label: "flat manifold, entropy-like potential field",
+        simulationName: "flat_manifold__entropy_like_potential_field",
+        manifold: "flat",
+        fieldName: "entropy_like",
+        simulationKind: "potential_field",
+        dimension: 2,
+        script: "simulation/generate_flat_manifold_potential_fields.py",
+        module: "simulation/flat_manifold_potential_fields.py"
       },
       s_curve_velocity_flow: {
         label: "s curve manifold, velocity flow field",
         simulationName: "s_curve_manifold__velocity_flow_vector_field",
         manifold: "s_curve",
         fieldName: "velocity_flow",
+        simulationKind: "vector_field",
         dimension: 3,
         script: "simulation/generate_manifold_velocity_flows.py",
         module: "simulation/manifold_velocity_flows.py"
@@ -341,6 +398,7 @@
         simulationName: "swiss_roll_manifold__velocity_flow_vector_field",
         manifold: "swiss_roll",
         fieldName: "velocity_flow",
+        simulationKind: "vector_field",
         dimension: 3,
         script: "simulation/generate_manifold_velocity_flows.py",
         module: "simulation/manifold_velocity_flows.py"
@@ -350,6 +408,7 @@
         simulationName: "half_sphere_manifold__velocity_flow_vector_field",
         manifold: "half_sphere",
         fieldName: "velocity_flow",
+        simulationKind: "vector_field",
         dimension: 3,
         script: "simulation/generate_manifold_velocity_flows.py",
         module: "simulation/manifold_velocity_flows.py"
@@ -359,6 +418,7 @@
         simulationName: "half_sphere_manifold__rotation_vector_field",
         manifold: "half_sphere",
         fieldName: "rotation",
+        simulationKind: "vector_field",
         dimension: 3,
         script: "simulation/generate_manifold_velocity_flows.py",
         module: "simulation/manifold_velocity_flows.py"
@@ -368,6 +428,7 @@
         simulationName: "half_sphere_manifold__spiral_vector_field",
         manifold: "half_sphere",
         fieldName: "spiral",
+        simulationKind: "vector_field",
         dimension: 3,
         script: "simulation/generate_manifold_velocity_flows.py",
         module: "simulation/manifold_velocity_flows.py"
@@ -377,6 +438,7 @@
         simulationName: "half_sphere_manifold__saddle_vector_field",
         manifold: "half_sphere",
         fieldName: "saddle",
+        simulationKind: "vector_field",
         dimension: 3,
         script: "simulation/generate_manifold_velocity_flows.py",
         module: "simulation/manifold_velocity_flows.py"
@@ -386,6 +448,7 @@
         simulationName: "half_sphere_manifold__radial_source_vector_field",
         manifold: "half_sphere",
         fieldName: "radial_source",
+        simulationKind: "vector_field",
         dimension: 3,
         script: "simulation/generate_manifold_velocity_flows.py",
         module: "simulation/manifold_velocity_flows.py"
@@ -395,6 +458,7 @@
         simulationName: "half_sphere_manifold__radial_sink_vector_field",
         manifold: "half_sphere",
         fieldName: "radial_sink",
+        simulationKind: "vector_field",
         dimension: 3,
         script: "simulation/generate_manifold_velocity_flows.py",
         module: "simulation/manifold_velocity_flows.py"
@@ -404,6 +468,7 @@
         simulationName: "half_sphere_manifold__quadratic_source_sink_vector_field",
         manifold: "half_sphere",
         fieldName: "quadratic_source_sink",
+        simulationKind: "vector_field",
         dimension: 3,
         script: "simulation/generate_manifold_velocity_flows.py",
         module: "simulation/manifold_velocity_flows.py"
@@ -479,6 +544,49 @@
       vy += velocityNoise * 0.35 * (rand(i * 53 + 23) - 0.5);
       vz += velocityNoise * 0.35 * (rand(i * 61 + 31) - 0.5);
       return { x, y, z, vx, vy, vz };
+    }
+
+    function potentialPoint(i, n, field) {
+      const item = catalog[field];
+      const x = 1.6 * (2 * rand(i * 19 + 5) - 1);
+      const y = 1.6 * (2 * rand(i * 23 + 7) - 1);
+      let potential;
+      let gx;
+      let gy;
+
+      if (item.fieldName === "single_basin") {
+        potential = 0.5 * (x * x + y * y);
+        gx = x;
+        gy = y;
+      } else if (item.fieldName === "double_well") {
+        potential = (x * x - 1) ** 2 + 0.45 * y * y;
+        gx = 4 * x * (x * x - 1);
+        gy = 0.9 * y;
+      } else if (item.fieldName === "saddle") {
+        potential = 0.5 * (x * x - y * y);
+        gx = x;
+        gy = -y;
+      } else {
+        const eps = 0.001;
+        const r2 = x * x + y * y;
+        potential = 0.5 * r2 * Math.log(r2 + eps);
+        const factor = Math.log(r2 + eps) + r2 / (r2 + eps);
+        gx = x * factor;
+        gy = y * factor;
+      }
+
+      const norm = Math.hypot(gx, gy) || 1;
+      const positionNoise = Number(positionNoiseEl.value);
+      const velocityNoise = Number(velocityNoiseEl.value);
+      return {
+        x: x / 1.6 + positionNoise * 0.18 * (rand(i * 41 + 13) - 0.5),
+        y: y / 1.6 + positionNoise * 0.18 * (rand(i * 43 + 17) - 0.5),
+        z: 0,
+        vx: -gx / norm + velocityNoise * 0.18 * (rand(i * 47 + 19) - 0.5),
+        vy: -gy / norm + velocityNoise * 0.18 * (rand(i * 53 + 23) - 0.5),
+        vz: 0,
+        potential
+      };
     }
 
     function halfSphereVector(x, y, z, fieldName) {
@@ -603,7 +711,11 @@
     function sortedSamples(item, field, n) {
       const samples = [];
       for (let i = 0; i < n; i += 1) {
-        const p = item.dimension === 3 ? manifoldPoint(i, n, field) : point(i, n, field);
+        const p = item.simulationKind === "potential_field"
+          ? potentialPoint(i, n, field)
+          : item.dimension === 3
+            ? manifoldPoint(i, n, field)
+            : point(i, n, field);
         const start = item.dimension === 3
           ? project3d(p.x, p.y, p.z)
           : { x: canvas.width * (0.5 + p.x * 0.36), y: canvas.height * (0.5 - p.y * 0.36), scale: 1, depth: 0 };
@@ -613,6 +725,14 @@
         samples.sort((a, b) => b.start.depth - a.start.depth);
       }
       return samples;
+    }
+
+    function potentialColor(value, minValue, maxValue) {
+      const range = maxValue - minValue || 1;
+      const t = Math.max(0, Math.min(1, (value - minValue) / range));
+      const hue = 215 - 175 * t;
+      const light = 34 + 22 * (1 - Math.abs(t - 0.5) * 2);
+      return `hsl(${hue} 62% ${light}% / 0.62)`;
     }
 
     function drawArrow(x0, y0, x1, y1) {
@@ -661,10 +781,17 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const samples = sortedSamples(item, field, n);
+      const potentialValues = samples
+        .map((sample) => sample.p.potential)
+        .filter((value) => Number.isFinite(value));
+      const potentialMin = potentialValues.length ? Math.min(...potentialValues) : 0;
+      const potentialMax = potentialValues.length ? Math.max(...potentialValues) : 1;
       for (const sample of samples) {
         const { i, p, start } = sample;
         const hue = Math.round(170 + 95 * rand(i * 7 + 1));
-        ctx.fillStyle = `hsl(${hue} 48% 38% / 0.34)`;
+        ctx.fillStyle = item.simulationKind === "potential_field"
+          ? potentialColor(p.potential, potentialMin, potentialMax)
+          : `hsl(${hue} 48% 38% / 0.34)`;
         ctx.beginPath();
         ctx.arc(start.x, start.y, item.dimension === 3 ? 1.7 + 0.7 * start.scale : 1.9, 0, 2 * Math.PI);
         ctx.fill();
@@ -686,6 +813,7 @@
         ["display_name", item.label],
         ["manifold", item.manifold],
         ["field_name", item.fieldName],
+        ["simulation_kind", item.simulationKind],
         ["dimension", item.dimension],
         ["n_samples", samplesEl.value],
         ["position_noise", positionNoiseEl.value],
@@ -703,6 +831,7 @@
       return {
         key: fieldEl.value,
         simulation_name: item.simulationName,
+        simulation_kind: item.simulationKind,
         manifold: item.manifold,
         field_name: item.fieldName,
         dimension: item.dimension,

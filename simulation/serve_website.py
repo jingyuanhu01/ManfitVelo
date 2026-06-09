@@ -28,6 +28,11 @@ from simulation.flat_manifold_vector_fields import (  # noqa: E402
     FlatVectorFieldConfig,
     make_flat_manifold_vector_field,
 )
+from simulation.flat_manifold_potential_fields import (  # noqa: E402
+    POTENTIAL_FIELD_NAMES,
+    FlatPotentialFieldConfig,
+    make_flat_manifold_potential_field,
+)
 from simulation.manifold_velocity_flows import (  # noqa: E402
     MANIFOLD_FIELD_NAMES,
     MANIFOLD_NAMES,
@@ -77,10 +82,19 @@ def parse_payload(raw_body: bytes) -> dict[str, Any]:
         raise ValueError("Noise values must be non-negative")
 
     if manifold == "flat":
-        if field_name not in FIELD_NAMES:
-            raise ValueError(f"Unknown flat field: {field_name}")
-        simulation_name = f"flat_manifold__{field_name}_vector_field"
+        simulation_kind = str(payload.get("simulation_kind", "vector_field"))
+        if simulation_kind == "potential_field":
+            if field_name not in POTENTIAL_FIELD_NAMES:
+                raise ValueError(f"Unknown flat potential field: {field_name}")
+            simulation_name = f"flat_manifold__{field_name}_potential_field"
+        elif simulation_kind == "vector_field":
+            if field_name not in FIELD_NAMES:
+                raise ValueError(f"Unknown flat field: {field_name}")
+            simulation_name = f"flat_manifold__{field_name}_vector_field"
+        else:
+            raise ValueError(f"Unknown simulation_kind: {simulation_kind}")
     else:
+        simulation_kind = "vector_field"
         if manifold not in MANIFOLD_NAMES:
             raise ValueError(f"Unknown manifold: {manifold}")
         if field_name not in MANIFOLD_FIELD_NAMES[manifold]:
@@ -93,6 +107,7 @@ def parse_payload(raw_body: bytes) -> dict[str, Any]:
 
     return {
         "simulation_name": simulation_name,
+        "simulation_kind": simulation_kind,
         "manifold": manifold,
         "field_name": field_name,
         "n_samples": n_samples,
@@ -106,7 +121,21 @@ def parse_payload(raw_body: bytes) -> dict[str, Any]:
 def generate_simulation(config: dict[str, Any]) -> dict[str, object]:
     """Run the matching reusable generator."""
 
+    if config["manifold"] == "flat" and config["simulation_kind"] == "potential_field":
+        return make_flat_manifold_potential_field(
+            FlatPotentialFieldConfig(
+                field_name=config["field_name"],
+                n_samples=config["n_samples"],
+                position_noise=config["position_noise"],
+                velocity_noise=config["velocity_noise"],
+                extra_dims=config["extra_dims"],
+                seed=config["seed"],
+            )
+        )
+
     if config["manifold"] == "flat":
+        if config["field_name"] not in FIELD_NAMES:
+            raise ValueError(f"Unknown flat field: {config['field_name']}")
         return make_flat_manifold_vector_field(
             FlatVectorFieldConfig(
                 field_name=config["field_name"],
@@ -138,6 +167,8 @@ def write_simulation(simulation: dict[str, object], config: dict[str, Any]) -> P
     output_dir.mkdir(parents=True, exist_ok=True)
     np.save(output_dir / "X.npy", simulation["X"])
     np.save(output_dir / "V.npy", simulation["V"])
+    if "potential" in simulation:
+        np.save(output_dir / "potential.npy", simulation["potential"])
     (output_dir / "metadata.json").write_text(
         json.dumps(simulation["config"], indent=2) + "\n",
         encoding="utf-8",
@@ -178,7 +209,9 @@ class SimulationRequestHandler(SimpleHTTPRequestHandler):
             {
                 "ok": True,
                 "output_dir": str(output_dir.relative_to(ROOT)),
-                "files": ["X.npy", "V.npy", "metadata.json"],
+                "files": ["X.npy", "V.npy", "potential.npy", "metadata.json"]
+                if "potential" in simulation
+                else ["X.npy", "V.npy", "metadata.json"],
             },
         )
 

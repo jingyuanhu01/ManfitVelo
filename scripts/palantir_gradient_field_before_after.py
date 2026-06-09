@@ -178,6 +178,90 @@ def plot_gradient_panel(
     plt.close(fig)
 
 
+def plot_potential_movement_panel(
+    X_raw_display: np.ndarray,
+    X_fit_display: np.ndarray,
+    entropy: np.ndarray,
+    movement_indices: np.ndarray,
+    output_path: Path,
+) -> None:
+    """Write a three-panel PCA potential comparison with movement paths."""
+
+    vmax = np.nanpercentile(entropy, 99)
+    vmin = np.nanpercentile(entropy, 1)
+    fig, axes = plt.subplots(1, 3, figsize=(18.2, 5.8), constrained_layout=False)
+
+    axes[0].scatter(
+        X_raw_display[:, 0],
+        X_raw_display[:, 1],
+        c=entropy,
+        s=7,
+        alpha=0.55,
+        linewidths=0,
+        cmap="viridis",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    axes[0].set_title("Before manifold fitting")
+
+    axes[1].scatter(
+        X_fit_display[:, 0],
+        X_fit_display[:, 1],
+        c=entropy,
+        s=7,
+        alpha=0.55,
+        linewidths=0,
+        cmap="viridis",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    axes[1].set_title("After manifold fitting")
+
+    axes[2].scatter(
+        X_raw_display[movement_indices, 0],
+        X_raw_display[movement_indices, 1],
+        s=10,
+        color="#b8bec5",
+        alpha=0.55,
+        label="before",
+    )
+    axes[2].scatter(
+        X_fit_display[movement_indices, 0],
+        X_fit_display[movement_indices, 1],
+        s=12,
+        color="#e23d62",
+        alpha=0.88,
+        label="after",
+    )
+    for idx in movement_indices:
+        axes[2].plot(
+            [X_raw_display[idx, 0], X_fit_display[idx, 0]],
+            [X_raw_display[idx, 1], X_fit_display[idx, 1]],
+            color="#9ca3af",
+            alpha=0.34,
+            linewidth=0.75,
+        )
+    axes[2].set_title("Movement path in PCA space")
+    axes[2].legend(frameon=False, loc="upper right")
+
+    mins = np.nanmin(np.vstack([X_raw_display[:, :2], X_fit_display[:, :2]]), axis=0)
+    maxs = np.nanmax(np.vstack([X_raw_display[:, :2], X_fit_display[:, :2]]), axis=0)
+    centers = (mins + maxs) / 2
+    radius = max(float(np.max(maxs - mins) / 2), np.finfo(float).eps)
+    pad = 0.08 * radius
+    for ax in axes:
+        ax.set_xlim(centers[0] - radius - pad, centers[0] + radius + pad)
+        ax.set_ylim(centers[1] - radius - pad, centers[1] + radius + pad)
+        ax.set_aspect("equal")
+        ax.set_xlabel("PC1")
+        ax.set_ylabel("PC2")
+    fig.suptitle("Palantir: PCA before/after manifold fitting", y=0.98)
+    fig.subplots_adjust(left=0.045, right=0.985, bottom=0.11, top=0.86, wspace=0.16)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=240, bbox_inches="tight")
+    plt.close(fig)
+
+
 def fit_spline_potential_surface(
     X_display: np.ndarray,
     entropy: np.ndarray,
@@ -328,6 +412,15 @@ def main() -> None:
         panel_path,
     )
 
+    movement_panel_path = args.output_dir / "palantir_entropy_pca_three_panel_before_after.png"
+    plot_potential_movement_panel(
+        raw_display,
+        fitted_display,
+        entropy,
+        arrow_indices,
+        movement_panel_path,
+    )
+
     potential_3d_path = args.output_dir / "palantir_entropy_potential_pca_3d_before_after_manifold_fit.png"
     plot_potential_3d_panel(
         raw_display,
@@ -385,6 +478,7 @@ def main() -> None:
     summary.to_csv(args.output_dir / "palantir_entropy_gradient_pca_before_after_summary.csv", index=False)
 
     print(panel_path)
+    print(movement_panel_path)
     print(potential_3d_path)
     print(args.output_dir / "palantir_entropy_gradient_pca_before_after_vectors.csv")
     print(args.output_dir / "palantir_entropy_gradient_pca_before_after_summary.csv")

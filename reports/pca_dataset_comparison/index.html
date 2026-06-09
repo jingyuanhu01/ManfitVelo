@@ -196,8 +196,8 @@
         </div>
         <div class="summary-card">
           <strong>Potential examples are useful but less directly comparable.</strong>
-          Palantir and the protein fitness landscape use scalar-potential or gradient-style evidence,
-          so their PCA views should be read as qualitative checks rather than equivalent RNA velocity benchmarks.
+          Palantir and the protein fitness landscape use scalar-potential evidence, so their PCA views
+          show potential values and movement paths rather than RNA velocity arrows.
         </div>
       </div>
     </section>
@@ -241,40 +241,42 @@
     </section>
 
     <section data-contract-section="key-findings">
-      <h2>Palantir: Entropy Gradients Can Be Read Directly on PCA Points</h2>
+      <h2>Palantir: Entropy Potential Is Shown With the Same Three-Panel PCA Layout</h2>
       <p>
-        The Palantir example uses PCA coordinates only, with quiver arrows anchored on sampled real
-        cells rather than grid points. The before panel is a local finite-difference entropy gradient;
-        the after panel shows the MANFIT-projected entropy gradient on the fitted PCA positions.
+        The Palantir example now follows the RNA velocity visual structure: before fitting, after
+        fitting, and movement path in PCA space. Points are colored by Palantir fate entropy, so the
+        first two panels show the potential field directly rather than a quiver overlay.
       </p>
       <figure>
-        <img src="assets/palantir_pca_before_after.png" alt="Palantir entropy gradient PCA before and after manifold fitting">
+        <img src="assets/palantir_pca_before_after.png" alt="Palantir entropy potential PCA before and after manifold fitting with movement paths">
         <figcaption>
-          Palantir bone marrow PCA entropy-gradient comparison from
-          <code>outputs/real_data_palantir/palantir_entropy_gradient_pca_before_after_manifold_fit.png</code>.
+          Palantir bone marrow PCA comparison from
+          <code>outputs/real_data_palantir/palantir_entropy_pca_three_panel_before_after.png</code>.
+          Color indicates Palantir fate entropy.
         </figcaption>
       </figure>
       <div class="dataset-note">
-        <p><strong>Interpretation.</strong> This is the most useful Palantir diagnostic so far: it stays raw in PCA space while still showing how the fitted geometry changes the gradient directions.</p>
+        <p><strong>Interpretation.</strong> This keeps the potential field readable while showing how the fitted geometry moves cells in the same PCA display space.</p>
       </div>
     </section>
 
     <section data-contract-section="key-findings">
-      <h2>Fitness Landscape: PCA Gives a Qualitative Check of the Potential Gradient</h2>
+      <h2>Fitness Landscape: Position + Gradient MANFIT Tightens the PCA Cloud</h2>
       <p>
-        The protein fitness landscape example uses P450 measured T50 as the scalar response. The PCA
-        view compares the observed latent positions, position-only MANFIT, and position-plus-gradient
-        MANFIT, with estimated gradient fields overlaid where available.
+        The protein fitness landscape example uses P450 measured T50 as the scalar response. The report
+        view now compares the original PCA positions against the position-plus-gradient MANFIT result,
+        then shows the before-to-after movement path in the same PCA basis.
       </p>
       <figure>
-        <img src="assets/fitness_landscape_pca_before_after.png" alt="Protein fitness landscape PCA before and after MANFIT">
+        <img src="assets/fitness_landscape_pca_before_after.png" alt="Protein fitness landscape PCA before and after position plus gradient MANFIT with movement paths">
         <figcaption>
           Protein fitness landscape PCA comparison from
-          <code>outputs/manual-potential-gradient/html-report/assets/protein_pca_results.png</code>.
+          <code>outputs/manual-potential-gradient/fitness_landscape_pca_three_panel_before_after.png</code>.
+          Color indicates measured T50.
         </figcaption>
       </figure>
       <div class="dataset-note">
-        <p><strong>Interpretation.</strong> This is a compact qualitative check that adding gradient information changes the fitted latent geometry, but it is not yet a polished benchmark metric.</p>
+        <p><strong>Interpretation.</strong> This now matches the Palantir scalar-potential layout: scalar values in the before/after panels and explicit movement paths in PCA space.</p>
       </div>
     </section>
 
@@ -298,14 +300,14 @@
       <p>
         The report reuses already generated PNG artifacts rather than rerunning all notebooks. For
         cell cycle and pancreas, the source figures are the existing RNA velocity PCA before/after
-        outputs. For Palantir, the source figure comes from the PCA-only entropy-gradient script. For
-        the fitness landscape, the source figure comes from the previous manual potential-gradient
-        HTML report assets.
+        outputs. For Palantir, the source figure comes from the PCA-only entropy script. For the
+        fitness landscape, the source figure is regenerated from the P450 data with the
+        position-plus-gradient MANFIT routine.
       </p>
       <pre>Selected visual contract:
 1. Use PCA coordinates for every dataset.
 2. Show before and after manifold fitting side by side.
-3. Keep vector or gradient overlays only where the source figure already supports them.</pre>
+3. For scalar-potential examples, show color by potential or fitness plus movement paths.</pre>
     </section>
 
     <section data-contract-section="limitations-uncertainty-and-robustness-checks">
@@ -314,7 +316,7 @@
         <li>The four examples do not share one metric, noise model, or validation target yet.</li>
         <li>PCA views are useful for inspection, but they can hide changes in higher dimensions.</li>
         <li>Palantir and protein fitness are scalar-potential examples, while cell cycle and pancreas are velocity-field examples.</li>
-        <li>The fitness landscape figure is inherited from an earlier report asset, so it should be revisited if we want a stricter apples-to-apples comparison.</li>
+        <li>The fitness landscape uses genotype one-hot features projected to PCA, not a learned protein latent coordinate unless that file is added later.</li>
       </ul>
     </section>
 

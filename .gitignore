@@ -6,3 +6,6 @@ outputs/
 docs/_build/
 data/
 data/neural_nlb/
+!simulation/data/
+simulation/data/*
+!simulation/data/.gitignore

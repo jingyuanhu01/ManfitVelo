@@ -65,6 +65,21 @@
       color: var(--ink);
       font: inherit;
     }
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button:disabled {
+      cursor: wait;
+      opacity: 0.62;
+    }
     .layout {
       display: grid;
       grid-template-columns: minmax(360px, 1.2fr) minmax(300px, 0.8fr);
@@ -106,6 +121,20 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 12px;
     }
+    .action {
+      margin-top: 18px;
+      display: grid;
+      gap: 10px;
+    }
+    .status {
+      min-height: 36px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+    .status.ok { color: var(--accent); }
+    .status.error { color: var(--accent-2); }
     .cards {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -173,6 +202,10 @@
         Samples
         <input id="samples" type="number" min="100" max="5000" step="100" value="1000">
       </label>
+      <div class="action">
+        <button id="generate" type="button">Generate Data</button>
+        <div class="status" id="generateStatus"></div>
+      </div>
     </aside>
 
     <section>
@@ -214,6 +247,8 @@
     const velocityNoiseEl = document.querySelector("#velocityNoise");
     const extraDimsEl = document.querySelector("#extraDims");
     const samplesEl = document.querySelector("#samples");
+    const generateEl = document.querySelector("#generate");
+    const generateStatusEl = document.querySelector("#generateStatus");
     const titleEl = document.querySelector("#title");
     const specEl = document.querySelector("#spec");
     const canvas = document.querySelector("#preview");
@@ -603,6 +638,17 @@
       ctx.fill();
     }
 
+    function cleanNumber(value) {
+      return `${Number(value).toPrecision(12)}`.replace(/\.?0+$/, "").replace("-", "m").replace(".", "p");
+    }
+
+    function outputDirFor(item) {
+      return [
+        "simulation/data",
+        `${item.simulationName}_position_noise_${cleanNumber(positionNoiseEl.value)}_velocity_noise_${cleanNumber(velocityNoiseEl.value)}_extra_dims_${Number(extraDimsEl.value)}`
+      ].join("/");
+    }
+
     function draw() {
       const field = fieldEl.value;
       const item = catalog[field];
@@ -645,10 +691,57 @@
         ["position_noise", positionNoiseEl.value],
         ["velocity_noise", velocityNoiseEl.value],
         ["extra_dims", extraDimsEl.value],
+        ["output_dir", outputDirFor(item)],
         ["script", item.script],
         ["module", item.module]
       ];
       specEl.innerHTML = rows.map(([k, v]) => `<div class="row"><span>${k}</span><code>${v}</code></div>`).join("");
+    }
+
+    function currentGenerationPayload() {
+      const item = catalog[fieldEl.value];
+      return {
+        key: fieldEl.value,
+        simulation_name: item.simulationName,
+        manifold: item.manifold,
+        field_name: item.fieldName,
+        dimension: item.dimension,
+        n_samples: Number(samplesEl.value),
+        position_noise: Number(positionNoiseEl.value),
+        velocity_noise: Number(velocityNoiseEl.value),
+        extra_dims: Number(extraDimsEl.value),
+        seed: 42
+      };
+    }
+
+    function setGenerateStatus(message, kind = "") {
+      generateStatusEl.textContent = message;
+      generateStatusEl.className = `status ${kind}`.trim();
+    }
+
+    async function generateData() {
+      const payload = currentGenerationPayload();
+      generateEl.disabled = true;
+      setGenerateStatus("Generating data...");
+      try {
+        const response = await fetch("api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || `Generation failed with HTTP ${response.status}`);
+        }
+        setGenerateStatus(`Saved X.npy and V.npy to ${result.output_dir}`, "ok");
+      } catch (error) {
+        setGenerateStatus(
+          `Local generator unavailable. Run: python simulation/serve_website.py. ${error.message}`,
+          "error"
+        );
+      } finally {
+        generateEl.disabled = false;
+      }
     }
 
     function startDrag(clientX, clientY) {
@@ -708,6 +801,7 @@
       draw();
     }, { passive: false });
 
+    generateEl.addEventListener("click", generateData);
     [fieldEl, positionNoiseEl, velocityNoiseEl, extraDimsEl, samplesEl].forEach((el) => el.addEventListener("input", draw));
     draw();
   </script>

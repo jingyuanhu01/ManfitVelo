@@ -728,6 +728,7 @@
         vx: -gradient.vx / norm,
         vy: -gradient.vy / norm,
         vz: -gradient.vz / norm,
+        cleanPotential: scalar.potential,
         potential: scalar.potential + potentialNoise * (rand(i * 47 + 19) - 0.5)
       };
     }
@@ -981,7 +982,7 @@
 
       const samples = sortedSamples(item, field, n);
       const potentialValues = samples
-        .map((sample) => sample.p.potential)
+        .map((sample) => sample.p.cleanPotential)
         .filter((value) => Number.isFinite(value));
       const potentialMin = potentialValues.length ? Math.min(...potentialValues) : 0;
       const potentialMax = potentialValues.length ? Math.max(...potentialValues) : 1;
@@ -1136,12 +1137,21 @@
       draw();
     }, { passive: false });
 
+    function bindRedraw(el) {
+      el.addEventListener("input", draw);
+      el.addEventListener("change", draw);
+    }
+
     generateEl.addEventListener("click", generateData);
     simulationKindEl.addEventListener("input", () => {
       populateFieldOptions();
       draw();
     });
-    [fieldEl, positionNoiseEl, velocityNoiseEl, extraDimsEl, samplesEl].forEach((el) => el.addEventListener("input", draw));
+    simulationKindEl.addEventListener("change", () => {
+      populateFieldOptions();
+      draw();
+    });
+    [fieldEl, positionNoiseEl, velocityNoiseEl, extraDimsEl, samplesEl].forEach(bindRedraw);
     populateFieldOptions();
     draw();
   </script>

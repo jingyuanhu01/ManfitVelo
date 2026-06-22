@@ -1,0 +1,19 @@
+{
+  "datasets": "all",
+  "n_seeds": 10,
+  "n_samples": 120,
+  "position_noise": 0.3,
+  "velocity_noise": 0.3,
+  "extra_dims": 12,
+  "seed": 42,
+  "n_neighbors": 25,
+  "fit_neighbors": 25,
+  "fit_iterations": 5,
+  "eta_g": 0.35,
+  "theta": 0.15,
+  "kappa": 1.0,
+  "include_local_pca": false,
+  "include_position_manfit": true,
+  "position_manfit_max_n": 160,
+  "output_dir": "/Users/eurus2003/Downloads/RNA velocity/ManfitVelo/reports/simulation_benchmark"
+}

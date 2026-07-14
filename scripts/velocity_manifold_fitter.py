@@ -106,8 +106,9 @@ class VelocityManifoldFitter:
 
     **High-priority tuning parameters**
         ``d_mode``, ``adaptive_variance_threshold``, ``adaptive_d_min``,
-        ``k``, ``T``, ``eta_g``, and ``theta``. These are the main knobs to
-        tune across datasets.
+        ``k``, ``T``, ``eta_g``, ``theta``, and
+        ``velocity_tangent_weight``. These are the main knobs to tune across
+        datasets.
 
     **Default modes**
         ``update_mode`` is passed to :meth:`fit` and defaults to
@@ -141,6 +142,11 @@ class VelocityManifoldFitter:
         more stable. Defaults to ``0.45``.
     :param float theta: Strength of velocity-aware neighbor scoring. Smaller
         values are usually more stable. Defaults to ``0.1``.
+    :param float velocity_tangent_weight: Strength of the velocity-direction
+        covariance added to each local positional covariance before tangent
+        estimation. ``0`` recovers position-only local PCA tangent estimation;
+        ``1`` gives reliable local velocity directions the same total
+        covariance scale as the positional covariance. Defaults to ``0``.
     :param str bandwidth_mode: Kernel bandwidth mode, either ``"variable"`` or
         ``"fixed"``. Defaults to ``"variable"``.
     :param bool recompute_neighbors: Whether to rebuild neighbors during
@@ -163,7 +169,8 @@ class VelocityManifoldFitter:
     :param bool weight_use_abs_cos: Use absolute cosine in directional kernel
         weights.
     :param velocity_confidence: Optional per-cell confidence in ``W``. Values
-        near zero reduce velocity-aware scoring and directional weighting.
+        near zero reduce velocity-aware scoring, directional weighting, and
+        velocity-augmented tangent estimation.
     :param random_state: Random seed for NumPy and PCA.
     :param int candidate_mult: Multiplier for Euclidean candidate neighbors
         before velocity-aware reranking.
@@ -206,6 +213,8 @@ class VelocityManifoldFitter:
         candidate_mult=4,
         neighbor_update_freq=1,
         eps=1e-12,
+        *,
+        velocity_tangent_weight=0.0,
     ):
         if random_state is not None:
             np.random.seed(random_state)
@@ -243,6 +252,7 @@ class VelocityManifoldFitter:
         self.adaptive_d_max = None if adaptive_d_max is None else int(adaptive_d_max)
         self.global_d = int(global_d)
         self.theta = float(theta)
+        self.velocity_tangent_weight = float(velocity_tangent_weight)
         self.gamma = float(gamma)
         self.use_abs_cos = bool(use_abs_cos)
         self.weight_use_abs_cos = bool(weight_use_abs_cos)
@@ -265,6 +275,12 @@ class VelocityManifoldFitter:
         self.candidate_mult = int(candidate_mult)
         self.neighbor_update_freq = int(neighbor_update_freq)
         self.eps = float(eps)
+
+        if (
+            not np.isfinite(self.velocity_tangent_weight)
+            or self.velocity_tangent_weight < 0.0
+        ):
+            raise ValueError("velocity_tangent_weight must be a finite nonnegative number")
 
         if self.d_mode == "adaptive":
             if not 0.0 < self.adaptive_variance_threshold <= 1.0:
@@ -400,7 +416,41 @@ class VelocityManifoldFitter:
 
             x_bar = np.sum(w[:, None] * self.X[neigh], axis=0)
             diff = self.X[neigh] - x_bar
-            C = (w[:, None] * diff).T @ diff
+            C_position = (w[:, None] * diff).T @ diff
+            C = C_position
+
+            if self.velocity_tangent_weight > 0.0:
+                local_velocity = self.W[neigh]
+                velocity_norm = np.linalg.norm(local_velocity, axis=1)
+                valid_velocity = velocity_norm > self.eps
+                velocity_direction = np.zeros_like(local_velocity)
+                velocity_direction[valid_velocity] = (
+                    local_velocity[valid_velocity] / velocity_norm[valid_velocity, None]
+                )
+
+                # The uncentered outer products encode tangent directions;
+                # opposite velocities support the same tangent axis.  Keeping
+                # confidence weights unnormalized makes low-confidence or
+                # zero-velocity neighborhoods contribute less overall.
+                velocity_weight = (
+                    w
+                    * self.velocity_confidence[neigh]
+                    * valid_velocity.astype(float)
+                )
+                C_velocity = (
+                    velocity_weight[:, None] * velocity_direction
+                ).T @ velocity_direction
+
+                # C_velocity is dimensionless with trace at most one.  Scaling
+                # by trace(C_position) makes the parameter invariant to a
+                # global rescaling of the position coordinates.  At weight 1,
+                # fully confident velocities contribute the same total local
+                # covariance scale as positions.
+                position_scale = float(np.trace(C_position))
+                C = C_position + (
+                    self.velocity_tangent_weight * position_scale * C_velocity
+                )
+
             C = 0.5 * (C + C.T)
 
             eigvals, eigvecs = np.linalg.eigh(C)

@@ -2077,3 +2077,17 @@ unchanged (`git show origin/main:<path>`, verified byte-identical via `cmp`).
 Merged via `git merge origin/main`, resolving the single conflicting file
 (`scripts/velocity_manifold_fitter.py`) by keeping the already-reconciled version (confirmed via
 `git status` that no other file conflicted). Pushed: `54a967e..c07986a main -> main`.
+
+## Restored 9 collaborator-authored files removed by the repo cleanup
+
+The 2026-08-11/12 repo cleanup (see above) removed 9 files originally authored by Jingyuan Hu on
+2026-06-08 (`flat_manifold_potential_fields.py`, `flat_manifold_vector_fields.py`,
+`manifold_velocity_flows.py`, `generate_flat_manifold_potential_fields.py`,
+`generate_flat_manifold_vector_fields.py`, `generate_manifold_velocity_flows.py`,
+`serve_website.py`, `website/index.html`, `data/.gitignore`) as orphaned dead code once their last
+importer (`run_simulation_benchmark_v2.py`) was retired. The reasoning was sound (nothing in the
+frozen P0-P5 protocol references them), but the user flagged after the push that this removed a
+collaborator's own contribution from the repo's current tree, not just this session's scratch
+code. Restored all 9 verbatim from their last committed state (`dcfb890`, byte-identical,
+confirmed via `cmp`) at the user's request, with no deprecation annotation -- kept exactly as they
+were before the cleanup touched them.

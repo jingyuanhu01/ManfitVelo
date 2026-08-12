@@ -2091,3 +2091,31 @@ collaborator's own contribution from the repo's current tree, not just this sess
 code. Restored all 9 verbatim from their last committed state (`dcfb890`, byte-identical,
 confirmed via `cmp`) at the user's request, with no deprecation annotation -- kept exactly as they
 were before the cleanup touched them.
+
+## Full audit of collaborator-authored files, second restoration pass
+
+After restoring the 9 `simulation/` files, the user asked for a complete check across the whole
+repo -- not just `simulation/`. Enumerated every file ever touched by Jingyuan Hu across all his
+commits (`git log --all --author="Jingyuan Hu" --name-only`, both his git identities), then checked
+each one's presence in the current tree.
+
+Found 13 more files removed by the same 2026-08-11/12 cleanup commit (`8ab460a`): `scripts/manfit.py`,
+`scripts/manfit_ours.py`, `scripts/fitness_landscape_pca_report_panels.py`,
+`scripts/palantir_gradient_field_before_after.py`, `scripts/prepare_protein_latent_paper_data.py`,
+`scripts/train_test_evaluation.py`, `scripts/reference_implementations/collaborator_velocity_manifold_fitting_demo.py`,
+`scripts/reference_implementations/jingyuan_velocity_manifold_fitter.py`, and the 5-file
+`reports/pca_dataset_comparison/` report (index.html + 4 PNGs). Restored all 13 verbatim from
+`dcfb890` (byte-identical, confirmed via `cmp`), same as the `simulation/` batch.
+
+Also checked (and ruled out as non-issues, predating this session entirely): `notebooks/manfit_2d_simulation.ipynb`,
+`notebooks/manfit_RNA_velocity.ipynb`, `notebooks/manfit_velocity_1d_simulation.ipynb`, and
+`scripts/manfit_velocity.py` all show as "missing" under their original names, but that's because
+Jingyuan Hu renamed them himself on 2026-05-24 (commit `cba6ef8`, "Add merged velocity manifold
+fitter") -- the 2d/RNA_velocity/velocity_1d notebooks moved to `notebooks/reference_notebooks/`,
+and `manfit_velocity.py` became `scripts/reference_implementations/jingyuan_velocity_manifold_fitter.py`
+(itself one of the 13 restored above). Their content is intact and tracked under those paths;
+nothing further to do there.
+
+This should now be the complete set: every file the collaborator ever authored is either present
+unchanged, present under a rename he made himself, or restored to its last state before this
+session's cleanup touched it.

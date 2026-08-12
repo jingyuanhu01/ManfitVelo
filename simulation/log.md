@@ -2047,3 +2047,33 @@ corroborating evidence that the shared VMF config (in particular the larger `k` 
 `theta_schedule=ramp`/`kappa=2.0` combination inherited from the pooled grid search) genuinely
 underperforms on curved 2-D surfaces specifically — not a fluke of one run. Reinforces that this is
 worth a dedicated follow-up rather than a one-off tweak.
+
+## Pushed to GitHub: merged with collaborator's velocity_tangent_weight
+
+`git fetch` before pushing showed `origin/main` one commit ahead — Jingyuan Hu's "Add
+velocity-augmented tangent fitting" (Jul 14), adding `build_figure2_html_report.py`,
+`figure2_geometric_knn_metrics.py`, `figure2_manifold_projection_metrics.py`,
+`figure2_reconstruction_metrics.py`, `plot_figure2_vector_fields_1x4.py`,
+`potential_from_gradient.py`, `notebooks/simulations/figure2_all_in_one.ipynb`, and a change to
+`scripts/velocity_manifold_fitter.py` adding `velocity_tangent_weight` — an independently-built
+mechanism for the same idea as `lambda_v` (blend a velocity-derived covariance into the tangent
+estimate), but numerically different: unit-normalized velocity *directions* rather than raw
+vectors, per-neighbor `velocity_confidence` discount, and `trace(C_position)`-direct scaling
+rather than `lambda_v`'s exact trace-matching.
+
+Resolution (user confirmed: keep both, do a real merge): kept `velocity_tangent_weight` as an
+independent, additive, keyword-only parameter (default `0.0`) applied on top of whatever `C`
+`lambda_v` produces, right before final symmetrization — it never touches the `lambda_v` code
+path. Verified bit-exact against the stored `circle`/seed=43000/manfitvelo regression value
+(`0.01707085007914008`) with `velocity_tangent_weight=0.0`, and machine-epsilon equivalent
+(`np.allclose(..., rtol=1e-10, atol=1e-12)`) to the collaborator's original formula when
+`lambda_v=0.0, velocity_tangent_weight>0`. Added 3 dedicated tests
+(`simulation/test_velocity_augmented_tangent.py`) covering the no-op-at-zero case, additivity/
+independence from `lambda_v`, and the negative-value validation error — full suite 23/23 passing.
+
+The other 6 files + notebook had zero overlap with this session's work and were brought in
+unchanged (`git show origin/main:<path>`, verified byte-identical via `cmp`).
+
+Merged via `git merge origin/main`, resolving the single conflicting file
+(`scripts/velocity_manifold_fitter.py`) by keeping the already-reconciled version (confirmed via
+`git status` that no other file conflicted). Pushed: `54a967e..c07986a main -> main`.

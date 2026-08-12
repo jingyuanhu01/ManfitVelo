@@ -1,0 +1,167 @@
+# Frozen scenario definitions for the formal ManfitVelo simulation benchmark.
+# Generative source of truth: scripts/benchmark_scenarios.py::vector_data
+# and SETS (n, position-noise sigma_X, velocity-noise sigma_V, intrinsic dimension d);
+# ground-truth dense support for evaluation: simulation/benchmark_core.py::dense_truth_support.
+# Position noise is a *single scalar draw per point along the manifold's own analytic
+# normal direction* (not full isotropic noise) -- see parameter_rules.md / log.md.
+# Velocity noise (sigma_V = field_noise) is full ambient-dimensional and identical
+# (0.10) across every scenario; only sigma_X and the geometry vary.
+
+# noise_mode (added 2026-08-12, current_plan.md P1.2): standard, documented position-noise
+# generation modes, so this is a reusable config field rather than a one-off branch inside
+# a single experiment's code.
+#   normal_only        -- the mode described above (all 9 canonical scenarios below use
+#                          this; also used by simulation/run_manifold_dimension_scalability
+#                          .py's Circle/Saddle Surface ambient-D experiment, where it stays
+#                          D-independent in magnitude since it's a scalar along one embedded
+#                          direction).
+#   isotropic_gaussian  -- per-ambient-coordinate iid Gaussian noise (used by
+#                          simulation/run_sphere_scalability.py's S^2 -> R^D experiment
+#                          only; not used by any of the 9 canonical scenarios below).
+# Velocity noise is NOT covered by noise_mode -- it has always been ambient-isotropic
+# Gaussian in this codebase (see add_noise() above), for both position-noise modes.
+noise_modes:
+  normal_only:
+    description: >-
+      A single scalar draw per point along the manifold's own analytic normal direction.
+      Magnitude is independent of ambient dimension D by construction (a scalar times a
+      unit vector), so no D-dependent scaling rule is needed when embedding into higher D.
+    used_by: [circle, s_curve, flat_rotation_annulus, half_sphere_tangent, swiss_roll, saddle_surface, curved_hairpin, near_intersection, y_branch]
+    used_by_supplement_experiments: [manifold_dimension_scalability (circle, saddle_surface)]
+  isotropic_gaussian:
+    description: >-
+      Per-ambient-coordinate iid Gaussian noise. Total noise magnitude grows with ambient
+      dimension D under the "fixed_coordinate" regime (per-coordinate variance held
+      constant as D grows) used by run_sphere_scalability.py.
+    used_by: []
+    used_by_supplement_experiments: [sphere_scalability (S^2)]
+
+groups:
+  A_regular_smooth_manifold:
+    description: >-
+      Primary comparison regime. Deliberately spans curvature sign/magnitude: annulus is
+      exactly flat, half-sphere and swiss roll are positively/extrinsically curved, saddle
+      has negative/mixed Gaussian curvature.
+    scenarios: [circle, s_curve, flat_rotation_annulus, half_sphere_tangent, swiss_roll, saddle_surface]
+  B_geometry_stress_test:
+    description: small-reach / ambiguous-neighborhood stress tests
+    scenarios: [curved_hairpin, near_intersection]
+  C_out_of_assumption:
+    description: non-smooth branch point, outside the smooth-manifold assumption
+    scenarios: [y_branch]
+
+scenarios:
+  circle:
+    group: A_regular_smooth_manifold
+    n: 360
+    sigma_X: 0.05
+    sigma_V: 0.10
+    intrinsic_dimension: 1
+    ambient_dimension: 3
+    noise_mode: normal_only
+    geometry: "t~Unif(0,2pi); X=(cos t, sin t, 0); V=(-sin t, cos t, 0)"
+
+  s_curve:
+    group: A_regular_smooth_manifold
+    n: 360
+    sigma_X: 0.05
+    sigma_V: 0.10
+    intrinsic_dimension: 1
+    ambient_dimension: 3
+    noise_mode: normal_only
+    geometry: "t~Unif(-1.4,1.4); X=(sin(1.6t), t, 0); normalized derivative field"
+
+  flat_rotation_annulus:
+    group: A_regular_smooth_manifold
+    n: 420
+    sigma_X: 0.05
+    sigma_V: 0.10
+    intrinsic_dimension: 2
+    ambient_dimension: 3
+    noise_mode: normal_only
+    geometry: "r^2~Unif(0.35^2,1), t~Unif(0,2pi); X=(r cos t, r sin t, 0); V=(-y,x,0)"
+    curvature: "exactly flat (embedded as z=0)"
+
+  half_sphere_tangent:
+    group: A_regular_smooth_manifold
+    n: 480
+    sigma_X: 0.04
+    sigma_V: 0.10
+    intrinsic_dimension: 2
+    ambient_dimension: 3
+    noise_mode: normal_only
+    geometry: "z~Unif(0,1), azimuth~Unif(0,2pi); b=(0.7,-0.4,0.6) projected to tangent; clean speed>0.18"
+    curvature: "positive (unit sphere)"
+
+  swiss_roll:
+    group: A_regular_smooth_manifold
+    n: 480
+    sigma_X: 0.05
+    sigma_V: 0.10
+    intrinsic_dimension: 2
+    ambient_dimension: 3
+    noise_mode: normal_only
+    geometry: "t~Unif(1.5pi,3.5pi) [one winding], y~Unif(-1,1); X=(t cos t, y, t sin t)/3.5pi; flow along increasing t"
+    curvature: "strongly extrinsically curved; note below"
+    note: >-
+      One full winding, not the classic 1.5-turn sklearn range: more turns make Euclidean
+      kNN bridge across adjacent windings even at small k, so no method (including
+      ManfitVelo) beats noisy input anywhere in a reasonable neighborhood-size range --
+      verified empirically (log.md Round 3). One winding is the gentlest choice that both
+      stays recognizably a rolled sheet and gives every method a fair chance, consistent
+      with this scenario's role as a Group-A benchmark rather than an extra stress test.
+
+  saddle_surface:
+    group: A_regular_smooth_manifold
+    n: 480
+    sigma_X: 0.05
+    sigma_V: 0.10
+    intrinsic_dimension: 2
+    ambient_dimension: 3
+    noise_mode: normal_only
+    geometry: "u,v~Unif(-1,1); X=(u,v,0.45(u^2-v^2)); flow along +u"
+    curvature: "negative/mixed Gaussian curvature (a=0.45 matches the legacy scalar_saddle scale)"
+
+  curved_hairpin:
+    group: B_geometry_stress_test
+    n: 480
+    sigma_X: 0.025
+    sigma_V: 0.10
+    intrinsic_dimension: 1
+    ambient_dimension: 3
+    noise_mode: normal_only
+    geometry: "arm length 1.2; curvature 0.15; separation 0.22; bend radius 0.11"
+    note: >-
+      Separation is chosen by hairpin_reach_diagnostics() -- a purely geometric,
+      non-circular audit (no method results, no final seeds) -- to be the smallest change
+      from the historical default that still satisfies reach/cross-arm-contamination
+      conditions. Its own "k" output is NOT used operationally (see
+      neighbor_count_rule in methods_config.yaml -- no scenario-specific exception).
+
+  near_intersection:
+    group: B_geometry_stress_test
+    n: 480
+    sigma_X: 0.02
+    sigma_V: 0.10
+    intrinsic_dimension: 1
+    ambient_dimension: 3
+    noise_mode: normal_only
+    geometry: "x~Unif(-1.1,1.1); separation 0.13; curvature 0.3; opposing branch flow"
+    note: >-
+      Separation is a fixed legacy constant, not (yet) audited by a reach diagnostic
+      analogous to Curved Hairpin's -- flagged as a follow-up in simulation_protocol.md.
+
+  y_branch:
+    group: C_out_of_assumption
+    n: 480
+    sigma_X: 0.02
+    sigma_V: 0.10
+    intrinsic_dimension: 1
+    ambient_dimension: 3
+    noise_mode: normal_only
+    geometry: "three length-1 branches with directions (0,-1),(-0.8,0.8),(0.8,0.8); outward unit flow"
+    note: "branch point is non-smooth; points within radius 0.05 of it are excluded from angle-type metrics"
+
+evaluation:
+  dense_ground_truth_points_per_scenario: "~12000-16300 (see benchmark_core.dense_truth_support)"
+  projection_ambiguity_handling: "see metric_definitions.md section D"

@@ -124,12 +124,29 @@ def project_vectors_with_pca_info(V, info: dict[str, object]) -> np.ndarray:
     return (V @ components.T) @ components
 
 
-def local_pca_denoise(X, intrinsic_dim, n_neighbors=30, center=True, return_info=True):
-    """Simple local PCA denoiser used as an optional position-only baseline."""
+def local_pca_denoise(
+    X,
+    intrinsic_dim,
+    n_neighbors=30,
+    center=True,
+    return_info=True,
+    vectors=None,
+):
+    """Project points (and optional vectors) through pointwise local PCA bases.
+
+    Neighbors are selected once from the observed positions.  Each covariance
+    is centered at the mean of the neighbors (excluding the query point), and
+    the affine point reconstruction adds that mean back.  ``vectors`` are
+    projected through exactly the same pointwise tangent projectors.
+    """
 
     from sklearn.neighbors import NearestNeighbors
 
     X = _validate_matrix(X)
+    if vectors is not None:
+        vectors = _validate_matrix(vectors, name="vectors")
+        if vectors.shape != X.shape:
+            raise ValueError("vectors must have the same shape as X")
     intrinsic_dim = int(intrinsic_dim)
     if intrinsic_dim < 1 or intrinsic_dim > X.shape[1]:
         raise ValueError("intrinsic_dim must be between 1 and X.shape[1]")
@@ -140,6 +157,8 @@ def local_pca_denoise(X, intrinsic_dim, n_neighbors=30, center=True, return_info
     nbrs = NearestNeighbors(n_neighbors=n_neighbors + 1).fit(X)
     _, indices = nbrs.kneighbors(X)
     X_hat = np.empty_like(X)
+    vectors_hat = None if vectors is None else np.empty_like(vectors)
+    projectors = np.empty((X.shape[0], X.shape[1], X.shape[1]), dtype=float)
     spectra = np.zeros((X.shape[0], X.shape[1]), dtype=float)
     for i, neigh in enumerate(indices[:, 1:]):
         cloud = X[neigh]
@@ -150,53 +169,24 @@ def local_pca_denoise(X, intrinsic_dim, n_neighbors=30, center=True, return_info
         order = np.argsort(eigvals)[::-1]
         eigvals = np.maximum(eigvals[order], 0.0)
         basis = eigvecs[:, order[:intrinsic_dim]]
+        projector = basis @ basis.T
+        projectors[i] = projector
         spectra[i, : eigvals.size] = eigvals
-        X_hat[i] = mean + ((X[i] - mean) @ basis) @ basis.T
+        X_hat[i] = mean + (X[i] - mean) @ projector
+        if vectors_hat is not None:
+            vectors_hat[i] = vectors[i] @ projector
 
     info = {
         "intrinsic_dim": intrinsic_dim,
         "n_neighbors": n_neighbors,
         "mean_local_spectrum": spectra.mean(axis=0),
+        "projectors": projectors,
+        "neighbor_indices": indices[:, 1:].copy(),
     }
+    if vectors_hat is not None:
+        if return_info:
+            return X_hat, vectors_hat, info
+        return X_hat, vectors_hat
     if return_info:
         return X_hat, info
     return X_hat
-
-
-def oracle_pca_rank_sweep(X_noisy, X_clean=None, X_manifold=None, ranks=None, metric="clean_mse"):
-    """Oracle simulation helper for selecting PCA rank with known ground truth.
-
-    This is only fair for synthetic analysis because it uses clean data. It
-    should never be used as a real-data baseline.
-    """
-
-    X_noisy = _validate_matrix(X_noisy, name="X_noisy")
-    if metric not in {"clean_mse", "manifold_mse"}:
-        raise ValueError("metric must be 'clean_mse' or 'manifold_mse'")
-    target = X_clean if metric == "clean_mse" else X_manifold
-    if target is None:
-        raise ValueError(f"{metric} requires a matching ground-truth matrix")
-    target = _validate_matrix(target, name="target")
-    if target.shape != X_noisy.shape:
-        raise ValueError("target must have the same shape as X_noisy")
-
-    max_rank = min(X_noisy.shape)
-    if ranks is None:
-        ranks = range(1, max_rank + 1)
-
-    rows = []
-    best = None
-    for rank in ranks:
-        X_hat, info = global_pca_denoise(X_noisy, int(rank), return_info=True)
-        score = float(np.mean(np.sum((X_hat - target) ** 2, axis=1)))
-        row = {
-            "rank": int(rank),
-            "metric": metric,
-            "score": score,
-            "explained_variance": float(np.sum(info["explained_variance_ratio"])),
-            "oracle": True,
-        }
-        rows.append(row)
-        if best is None or score < best["score"]:
-            best = row
-    return {"best": best, "sweep": rows}

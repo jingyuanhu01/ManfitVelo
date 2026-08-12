@@ -8,7 +8,42 @@ velocity matrix `W`, builds a velocity-aware neighbor graph, estimates local
 tangent spaces with weighted PCA, projects velocities onto those tangent spaces,
 and updates points with a normal-only manifold correction by default.
 
+## Repository structure
+
+| Path | What it is |
+|---|---|
+| `scripts/` | The method implementation: the core `VelocityManifoldFitter` class, its scalar-gradient variant, baseline comparators, and the shared scenario library the `simulation/` suite is built on. See below. |
+| `simulation/` | The paper-facing experiment suite (P0–P5 frozen protocol): canonical benchmark, robustness scans, controlled vector/scalar-field experiments, significance testing, and the consolidated report generator. See below. |
+| `archive/` | Retired/superseded code and old result snapshots — **not** part of the active protocol; kept for provenance and easy recovery, not for reuse. Gitignored (not part of the delivered repo). |
+| `results/` | Generated outputs from running `simulation/` scripts — reappears automatically when you run them. Gitignored. |
+| `notebooks/` | Interactive usage examples; see the Notebooks section below (two are currently stale). |
+| `data/` | Small example datasets (e.g. `data/cell_cycle/`) used by notebooks. |
+| `docs/` | Sphinx API documentation source. |
+
+### `scripts/` — method implementation
+
+| File | Role |
+|---|---|
+| `velocity_manifold_fitter.py` | Core `VelocityManifoldFitter` algorithm (see Quick Start below). |
+| `scalar_potential_manfit.py` | Scalar-gradient analog: estimates a gradient field from noisy scalar observations and fits it jointly via `VelocityManifoldFitter`, the same way real velocity is used. |
+| `benchmark_scenarios.py` | Shared scenario-generator/fitting-variant library most of `simulation/`'s active scripts import from (`vector_data`, `scalar_data`, `hairpin`, `fit_vmf_variant`, the position-only M5 baseline `position_only_trajectory`, evaluation helpers). Despite the name, this is a library, not a one-off script. |
+| `simulation_baselines.py` | Shared baseline pipelines (cosine-kernel, Global/Local PCA, Joint Low-Rank denoising, downstream velocity reconstruction) used across the benchmark suite. |
+| `graphvelo_official_adapter.py` | Vendored, pinned port of the official GraphVelo package's numerical core (see the file's own docstring for provenance/license) — the M1 baseline. |
+| `pca_denoisers.py` | Global/local PCA denoising primitives used by several baselines. |
+| `ambiguity_simulations.py` | Synthetic Y-branch flow generator. |
+| `html_report_utils.py` | Small self-contained HTML report helper. |
+
+### `simulation/` — experiment suite
+
+Formal entry points and shared infrastructure are described in the Simulation Benchmark Suite section below; `simulation/README.md`, `simulation/current_plan.md`, `simulation/log.md`, and `simulation/parameter_rules.md` are the authoritative reference docs (not duplicated here).
+
 ## Quick Start
+
+Install dependencies (see `requirements.txt`):
+
+```bash
+pip install -r requirements.txt
+```
 
 ```python
 from scripts.velocity_manifold_fitter import VelocityManifoldFitter
@@ -44,6 +79,17 @@ These are the parameters to tune first across datasets:
 - `eta_g`: normal correction step size. Smaller values are usually more stable.
 - `theta`: velocity-aware neighbor scoring strength. Smaller values are usually
   more stable.
+- `lambda_v`: strength of the trace-normalized local velocity covariance blended
+  into tangent estimation (`C = C_position + lambda_v * C_velocity`). The class
+  default is `0.0` (velocity-free tangent estimation, i.e. position-only
+  behavior). This is the parameter that actually lets velocity information
+  improve manifold recovery rather than only reweighting neighbors or
+  transporting tangential velocity; the `simulation/` benchmark suite currently
+  freezes it at `1.0` for directly-observed velocity after a dedicated
+  re-selection round (see `simulation/parameter_rules.md` §3a), and at `0.0`
+  for the scalar-gradient branch after a separate selection (§3b–§3c). Callers
+  who want the velocity-aware tangent behavior described in
+  `simulation/methods_config.yaml` must set it explicitly.
 
 ### Default Modes
 
@@ -71,6 +117,27 @@ These are mostly diagnostic or dataset-specific controls:
 - `use_abs_cos`, `weight_use_abs_cos`: cosine sign conventions.
 - `recompute_neighbors`, `candidate_mult`, `neighbor_update_freq`: neighbor
   search controls.
+- `velocity_covariance_mode`: how the local velocity covariance is built before
+  blending into tangent estimation — `"centered"`, `"uncentered"` (the current
+  `simulation/` default), or `"covariance_plus_mean"`. The latter two are
+  algebraically equivalent under common weights and are kept mainly as explicit
+  audit labels.
+- `velocity_trace_normalization`: normalization applied to the velocity
+  covariance before combining it with the position covariance. Only
+  `"match_position_trace"` is currently supported.
+- `lambda_v_confidence_scaling` / `lambda_v_confidence_power` /
+  `lambda_v_relative_error`: optionally discount `lambda_v` per point by
+  confidence/fitting-error before it enters the covariance blend —
+  `"none"` (default, bit-identical to not having this option at all),
+  `"linear"`, `"power"`, `"inverse_error"`, `"rank"`. Added for the
+  scalar-gradient pipeline, where per-point confidence varies more than for
+  directly-observed velocity; see `VelocityManifoldFitter`'s own docstring
+  for each mode's formula and `simulation/parameter_rules.md` §3b–§3c for
+  which ones are actually frozen for use.
+- `record_tangent_diagnostics` / `return_tangent_diagnostics`: save pointwise
+  covariance spectra and matrices at every tangent update. Intended for
+  synthetic mechanism diagnostics (see `simulation/`); disabled by default to
+  avoid quadratic-in-ambient-dimension storage in ordinary application runs.
 
 ## Local PCA Dimension
 
@@ -137,8 +204,12 @@ Useful notebooks live in `notebooks/method_tests/`:
 - `s_curve_gradient_field_embedding.ipynb`
 - `protein_latent_gradient_pipeline.ipynb`
 
-Reference notebooks and older implementations are kept in
-`notebooks/reference_notebooks/` and `scripts/reference_implementations/`.
+Reference notebooks are kept in `notebooks/reference_notebooks/`. The older
+standalone implementations they and the two "Position + Potential
+Experiments" notebooks below historically imported (`scripts/manfit.py`,
+`scripts/manfit_ours.py`, `scripts/reference_implementations/`) are no
+longer present under `scripts/` (see `archive/scripts/`); those two
+notebooks will currently fail on import until ported to a surviving module.
 
 ## Position + Potential Experiments
 
@@ -154,210 +225,111 @@ Two notebooks are the main entry points:
 - `notebooks/method_tests/protein_latent_gradient_pipeline.ipynb`: P450 protein
   fitness landscape example, using measured `T50` as the scalar potential.
 
+Both notebooks currently import `scripts.manfit_ours`/`scripts.manfit`, which
+are not present under `scripts/` (see the Notebooks section above); treat
+these two notebooks as stale until they are ported to a surviving module.
+`scripts/scalar_potential_manfit.py` is a separate, currently maintained
+scalar-field implementation used by the `simulation/` suite's
+scalar-benchmark scaffolding (see below) rather than by these notebooks.
+
 The protein data come from the Nature Communications paper:
 
 > Ding, X., Zou, Z. & Brooks III, C.L. Deciphering protein evolution and
 > fitness landscapes with latent space models. Nature Communications 10, 5644
 > (2019). https://doi.org/10.1038/s41467-019-13633-0
 
-The repository does not commit the downloaded data files. To reproduce the
-protein notebook, download the supplementary data files from the paper into
-`data/protein_latent_paper/raw/`, then run
-`scripts/prepare_protein_latent_paper_data.py` to create the local processed
-files used by the notebook.
+The repository does not commit the downloaded data files. The script that
+previously prepared local processed files from the paper's supplementary data
+(`scripts/prepare_protein_latent_paper_data.py`) is no longer present under
+`scripts/` (see `archive/scripts/`); reproducing the protein notebook
+currently requires restoring that script or writing an equivalent one.
 
-## Benchmark Pipeline
+## Simulation Benchmark Suite
 
-The benchmark scripts turn the exploratory notebooks into reproducible,
-quantitative comparisons against global PCA denoising baselines.
+The primary experimental and paper-facing work lives under `simulation/`, not
+under the older `reports/` pipeline described in earlier versions of this
+README — that pipeline has been moved in full to `archive/`; see
+`code_cleanup_manifest.md` for the audit that did it.
 
-Run the synthetic simulation benchmark:
+The suite compares seven methods — Ambient noisy input (M0), GraphVelo (M1),
+Cosine kernel (M2), Joint Low-Rank denoising (M3), Local PCA (M4),
+Position-only MANFIT (M5), and ManfitVelo (M6) — across nine canonical
+scenarios (Circle, S-curve, Flat Rotation Annulus, Half-sphere Tangent, Swiss
+Roll, Saddle Surface, Curved Hairpin, Near Intersection, Y-branch), with 15
+final evaluation seeds per scenario and a strict separation between tuning
+seeds (used for parameter selection) and final seeds (used only for reporting).
+Beyond the canonical benchmark, the suite includes ambient-dimension
+scalability, controlled vector-field experiments (same manifold/different
+fields, same dynamics/different manifolds) and their scalar-gradient analogs,
+paired significance testing, and a consolidated report — see
+`simulation/current_plan.md` for the full P0–P5 plan and results.
 
-```bash
-python scripts/run_simulation_benchmark.py
-```
-
-Run the real-data application geometry report:
-
-```bash
-python scripts/run_application_geometry_report.py
-```
-
-Run integrity and numerical sanity checks:
-
-```bash
-python scripts/check_benchmark_integrity.py
-```
-
-Run a quick VMF parameter sweep:
+Formal entry points:
 
 ```bash
-python scripts/run_parameter_sweep.py --quick
+# Core canonical benchmark
+python simulation/run_manfitvelo_benchmark.py          # canonical 9-scenario benchmark
+python simulation/run_manfitvelo_benchmark.py --report-only
+
+python simulation/run_sphere_scalability.py             # ambient-D scalability (S^2 in R^D)
+python simulation/run_sphere_scalability.py --report-only
+
+python simulation/run_stress_scans.py                    # Scan A/B/C: sample size, position noise, velocity noise
+python simulation/run_lambda_sensitivity.py               # vector-field lambda_v selection
+python simulation/run_wilcoxon_test.py                    # M5-vs-M6 significance test
+
+# Baseline-fairness / parameter-selection audits
+python simulation/run_c_selection.py                      # global k(n,d) constant selection
+python simulation/run_half_sphere_diagnosis.py             # half-sphere diagnosis
+python simulation/run_joint_low_rank_threshold_sensitivity.py  # M3 threshold sensitivity
+python simulation/run_manifold_dimension_scalability.py    # Circle/Saddle ambient-D scalability
+
+# Controlled vector-field experiments (P3)
+python simulation/run_v1_field_family.py                   # same manifold, different vector fields
+python simulation/run_v2_manifold_family.py                 # same dynamics, different manifolds
+
+# Scalar-gradient branch (P4)
+python simulation/run_scalar_lambda_v_selection.py          # scalar-branch lambda_v/scaling selection
+python simulation/run_p4_1_scalar_oracle_ablation.py        # oracle vs estimated gradient
+python simulation/run_s1_scalar_landscape_family.py         # same manifold, different scalar landscapes
+python simulation/run_s2_manifold_landscape_family.py        # same landscape, different manifolds
+
+# Consolidated report
+python simulation/build_experiment_report.py              # consolidated HTML report
 ```
 
-Generated reports:
+`simulation/run_dt_sensitivity.py` (Euler-step tau sensitivity) predates the
+current global-k(n,d) rule and is retired to `archive/simulation/` — not
+part of the current protocol.
 
-- `reports/simulation_benchmark/index.html`
-- `reports/simulation_benchmark/simulation_results_long.csv`
-- `reports/simulation_benchmark/simulation_results_summary.csv`
-- `reports/application_geometry/index.html`
-- `reports/application_geometry/application_results_long.csv`
-- `reports/application_geometry/application_results_summary.csv`
-- `reports/parameter_sweep/index.html`
-- `reports/parameter_sweep/parameter_sweep_results.csv`
-- `reports/parameter_sweep/parameter_sweep_summary.csv`
+Run the test suite:
 
-Implemented benchmark modules:
+```bash
+pip install -r requirements.txt
+python -m pytest -q simulation
+```
 
-- `scripts/pca_denoisers.py`: fixed-rank PCA, variance-threshold PCA,
-  optional local PCA, vector projection through retained PCA components, and
-  oracle rank sweep for simulation only.
-- `scripts/geometry_velocity_metrics.py`: reconstruction, clean-cloud
-  distance, local spectrum, normal/tangent energy, local spectral gap,
-  effective dimension, velocity-tangent alignment, velocity-neighbor direction
-  agreement, velocity smoothness, displacement, kNN overlap, distance
-  correlation, and trustworthiness helpers.
-- `scripts/html_report_utils.py`: small self-contained HTML report writer.
-- `scripts/run_parameter_sweep.py`: quick VMF sweep over `eta_g`, `theta`,
-  `k`, `T`, and adaptive local dimension threshold, with alignment/movement
-  tradeoff reports.
+Each script above writes to a like-named directory under `results/`
+(gitignored, reappears when you run the script); `results/experiment_report/`
+is the consolidated report pulling all of them together.
 
-Compared methods in the simulation benchmark:
+Reference documentation for the suite (design, frozen protocol, and full
+history):
 
-- raw noisy data;
-- PCA rank `d`, `2d`, and `5d`;
-- PCA variance thresholds at 90% and 95%;
-- position-only MANFIT when the sample size is small enough for the legacy
-  implementation;
-- `VelocityManifoldFitter`.
+- `simulation/README.md` — research question, algorithms, scenarios, metrics,
+  reproduction instructions.
+- `simulation/methods_config.yaml`, `simulation/scenario_config.yaml`,
+  `simulation/parameter_rules.md`, `simulation/metric_definitions.md`,
+  `simulation/simulation_protocol.md` — frozen, human-readable snapshots of the
+  current protocol.
+- `simulation/history.md` — condensed summary of how the protocol reached its
+  current frozen state.
+- `simulation/log.md` — full chronological experiment log, including
+  debugging and false starts.
+- `simulation/current_plan.md` — the forward-looking P0–P5 experiment plan
+  and its results, updated in place as each phase completes.
 
-Scientific interpretation:
+## License
 
-- PCA denoising tests whether a simple global linear subspace explains the
-  apparent improvement.
-- Velocity-aware MANFIT should improve local geometry and velocity
-  compatibility beyond global PCA when the data lie near a curved manifold or
-  when velocity contains useful tangent information.
-- Real-data reports do not use ground-truth reconstruction metrics. They focus
-  on geometry and velocity utility: local low-dimensionality, velocity-tangent
-  compatibility, movement size, and neighborhood preservation.
-
-### Latest benchmark run notes
-
-Run date: 2026-06-22 00:33:26 CST.
-
-Commands run:
-
-- `python scripts/check_benchmark_integrity.py`
-- `python scripts/run_simulation_benchmark.py --datasets all --n_seeds 10`
-- `python scripts/run_application_geometry_report.py`
-- `python scripts/run_parameter_sweep.py --quick`
-
-Generated reports:
-
-- `reports/simulation_benchmark/index.html`
-- `reports/simulation_benchmark/simulation_results_long.csv`
-- `reports/simulation_benchmark/simulation_results_summary.csv`
-- `reports/application_geometry/index.html`
-- `reports/application_geometry/application_results_long.csv`
-- `reports/application_geometry/application_results_summary.csv`
-- `reports/parameter_sweep/index.html`
-- `reports/parameter_sweep/parameter_sweep_results.csv`
-- `reports/parameter_sweep/parameter_sweep_summary.csv`
-
-Simulation datasets: `flat_rotation`, `flat_spiral`, `flat_saddle`,
-`s_curve`, `swiss_roll`, `half_sphere_rotation`, and
-`potential_saddle_surface_saddle`; 10 seeds, `n_samples=120`.
-
-Key simulation findings from `simulation_results_summary.csv`:
-
-- On `flat_rotation`, `flat_spiral`, and `flat_saddle`, PCA-rank-d had the
-  best RMSE and clean-cloud distance. This is expected because the true
-  synthetic manifold is globally linear, making PCA-rank-d close to an oracle
-  baseline.
-- On `s_curve`, PCA-rank-d and `VelocityManifoldFitter` were nearly tied on
-  RMSE (`0.5613` vs `0.5616`), with PCA-rank-d better on clean-cloud distance
-  (`0.3374` vs `0.4146`). In this setting, VMF does not clearly outperform PCA
-  baselines under the current parameter choices.
-- On `swiss_roll`, PCA-rank-d beat VMF on RMSE (`0.4868` vs `0.5308`) and
-  clean-cloud distance (`0.2999` vs `0.3887`). In this setting, VMF does not
-  clearly outperform PCA baselines under the current parameter choices.
-- On `half_sphere_rotation`, VMF had the best RMSE (`0.5405` vs PCA-rank-d at
-  `0.5588`), but PCA-rank-d had the best clean-cloud distance.
-- On `potential_saddle_surface_saddle`, VMF had the best RMSE (`0.5228` vs
-  PCA-rank-d at `0.5684`), while PCA-rank-d had a slightly better clean-cloud
-  distance (`0.3377` vs `0.3461`).
-- PCA-rank-d had the best normal energy and velocity-tangent alignment on every
-  simulation because it forces a global rank-d reconstruction. This should not
-  be interpreted as true nonlinear manifold recovery, because PCA-rank-d can
-  reduce normal energy by collapsing data into a global linear rank-d subspace.
-- VMF movement cost was moderate across simulations, typically around
-  `0.51-0.54` local scales on average; PCA-rank-d moved points more on the flat
-  and nonlinear simulations, around `0.63-0.66` local scales.
-
-Application findings from `application_results_summary.csv`:
-
-- On sampled cell-cycle data, VMF reduced normal energy ratio from `0.7071`
-  to `0.5443` and improved velocity-tangent alignment from `0.3802` to
-  `0.7044`.
-- VMF improved velocity-tangent alignment more than PCA-rank-10 (`0.7044` vs
-  `0.5434`), while PCA-rank-10 had similar normal energy (`0.5605`) but larger
-  movement (`0.6721` local scales).
-- VMF mean displacement was `0.5834` local scales and kNN overlap was `0.4506`.
-  VMF improves velocity-geometry compatibility, but this comes with a movement
-  and neighborhood-preservation tradeoff.
-
-Parameter sweep findings from `parameter_sweep_summary.csv`:
-
-- Quick sweep date: 2026-06-22 00:50:51 CST. Scope was
-  `s_curve`, `swiss_roll`, and `half_sphere_rotation`, 2 seeds,
-  `n_samples=100`, `eta_g in {0.2, 0.35, 0.5}`,
-  `theta in {0.05, 0.15, 0.3}`, `k in {15, 25}`, `T=3`, and
-  adaptive thresholds `{0.8, 0.9}`.
-- On `s_curve`, best velocity-tangent alignment was `0.7561` with
-  `eta_g=0.5`, `theta=0.05`, `k=25`, `T=3`, threshold `0.8`; this moved
-  points `0.4399` local scales with kNN overlap `0.7232`. The balanced setting
-  was `eta_g=0.35`, `theta=0.3`, `k=25`, `T=3`, threshold `0.8`.
-- On `swiss_roll`, the same high-utility setting `eta_g=0.5`, `theta=0.3`,
-  `k=25`, `T=3`, threshold `0.8` was also the best balanced and best RMSE
-  setting, with alignment `0.8535`, displacement `0.4455`, and kNN overlap
-  `0.7220`.
-- On `half_sphere_rotation`, best alignment used `eta_g=0.5`, `theta=0.3`,
-  `k=25`, `T=3`, threshold `0.8`, with alignment `0.8492`, displacement
-  `0.4484`, and kNN overlap `0.7312`. The balanced setting reduced step size
-  to `eta_g=0.35` while keeping `theta=0.3`, `k=25`, `T=3`, threshold `0.8`.
-- Lowest movement and best kNN preservation generally came from
-  `eta_g=0.2`, `theta=0.05`, `k=15`, `T=3`, threshold `0.8`, but these settings
-  had worse RMSE and lower alignment. This confirms the expected
-  utility-versus-movement tradeoff.
-
-Failed or skipped cases:
-
-- Integrity checks passed.
-- No simulation or cell-cycle application method failures were recorded.
-- Palantir and P450 protein landscape were skipped because their external data
-  files were not available in this checkout.
-- Quick parameter sweep completed with no failed settings.
-
-Current issues and next actions:
-
-- Expand the parameter sweep to more seeds and include `T=5` before making
-  stronger claims about VMF.
-- Add multi-seed biological sanity checks for cell-cycle phase ordering and
-  movement size.
-- Treat PCA-rank-d as a strong, partly oracle-like synthetic baseline whenever
-  the intrinsic dimension is known.
-
-### Known Limitations
-
-- Real data do not provide a true clean manifold, so application metrics are
-  diagnostic rather than ground-truth utility.
-- Velocity estimates may be noisy; velocity-aware metrics can reward aggressive
-  smoothing if movement and neighborhood preservation are not checked.
-- Global PCA is a strong baseline in approximately linear embeddings and can be
-  oracle-like in flat synthetic data when the intrinsic dimension is known.
-- Local geometry metrics depend on the neighborhood size and can favor
-  low-rank collapse unless paired with reconstruction, displacement, and
-  preservation metrics.
-- The scalar-potential branch remains experimental; default benchmarks focus on
-  stable vector-field simulations and the committed cell-cycle data.
+Not yet added. Decide and add a `LICENSE` file before making the repository
+public.

@@ -1,0 +1,157 @@
+# Frozen per-method configuration for the formal ManfitVelo simulation benchmark.
+# Generated from results/manfitvelo_benchmark/selected_hyperparameters.json, resynced
+# 2026-08-12 after the global-C=0.60 k(n,d) rewrite (9 scenarios, curvature-aware k,
+# M3 Joint Low-Rank). This file is a human-readable snapshot, not the source of truth --
+# selected_hyperparameters.json is regenerated fresh by every
+# `python simulation/run_manfitvelo_benchmark.py` run and is authoritative if the two
+# ever disagree. See parameter_rules.md for how every value below was derived (the
+# *rule*, not just the *result*).
+
+# ---------------------------------------------------------------------------
+# M0 -- Ambient Noisy Input (reference only, never ranked)
+# ---------------------------------------------------------------------------
+ambient_noisy:
+  updates_position: false
+  updates_velocity: false
+  tuned: false
+
+# ---------------------------------------------------------------------------
+# M1 -- GraphVelo (official implementation, untouched)
+# ---------------------------------------------------------------------------
+graphvelo:
+  n_neighbors: 15
+  a: 1.0
+  b: 0.0
+  r: 1.0
+  loss_func: linear
+  preprocessing: "raw continuous coordinates; no log/log1p, normalization, or PCA"
+  primary_input_units: truth-free standardized
+  standardization:
+    position_center: coordinate-wise noisy-position mean
+    position_scale: median positive displacement norm over the official 15-NN graph
+    velocity_scale: median noisy velocity norm
+    truth_free: true
+    selected_by_performance: false
+  raw_official_retained_as: provenance/sensitivity diagnostic only
+  tuned: false
+
+# ---------------------------------------------------------------------------
+# M2 -- Cosine Kernel Smoothing
+# ---------------------------------------------------------------------------
+cosine_kernel:
+  softmax_adjusted: false
+  density_corrected: true
+  speed_restoration: observed noisy speed only
+  neighbor_count: shared_graph_k (see below)
+  tuned: false
+
+# ---------------------------------------------------------------------------
+# M3 -- Joint Low-Rank Denoising (replaces the original Global PCA baseline)
+# ---------------------------------------------------------------------------
+joint_low_rank:
+  rule: >-
+    Block-normalize [X,V] by their own Frobenius norms, concatenate, truncate the joint
+    SVD at cumulative explained variance >= variance_threshold, exact affine unscale
+    back to original units.
+  variance_threshold: 0.90
+  rank_selection: per-sample, from the observed singular-value spectrum only
+  rank_uses_ground_truth: false
+  tuned: false
+
+# ---------------------------------------------------------------------------
+# M4 -- Local PCA
+# ---------------------------------------------------------------------------
+local_pca:
+  neighbor_count: shared_graph_k (see below)
+  tuned: false
+
+# ---------------------------------------------------------------------------
+# M5 -- Position-only MANFIT (Manifold-Aware Only). Independent implementation
+# (scripts/benchmark_scenarios.py::position_only_trajectory, never invokes VMF) -- plain
+# Euclidean kNN frozen at t=0, spatial-only weights, no velocity anywhere (not even for
+# neighbor selection). NOT numerically equivalent to VMF at lambda_v=0: VMF's neighbor
+# selection stays velocity/theta-aware regardless of lambda_v. Not to be confused with
+# the separate original MATLAB MANFIT port (retired to archive/scripts/manfit.py).
+# ---------------------------------------------------------------------------
+position_only_manfit:
+  T: 3
+  eta_g: 0.7
+  neighbor_count: shared_graph_k (see below)
+  tuning: >-
+    once-for-all grid search over T in {3,5,8} x eta_g in {0.35,0.5,0.7}, scored by mean
+    tuning_score pooled over all 9 scenarios x 3 tuning seeds (see parameter_rules.md section 4)
+
+# ---------------------------------------------------------------------------
+# M6 -- ManfitVelo
+# ---------------------------------------------------------------------------
+velocity_manifold_fitter:
+  T: 3
+  eta_g: 0.7
+  theta: 0.02
+  kappa: 0.0
+  bandwidth_mode: variable
+  theta_schedule: null  # "flat" won the pooled search this run; was "ramp" in the 7-scenario round
+  lambda_v: 1.0  # updated 2026-08-11 -- see the dedicated selection note below and log.md Round 5
+  velocity_covariance_mode: uncentered
+  velocity_trace_normalization: match_position_trace
+  neighbor_count: shared_graph_k (see below)
+  lambda_v_selection: >-
+    Not part of the grid above (searched separately, run_lambda_sensitivity.py, to avoid
+    conflating the two procedures). Originally a carried-forward constant (0.1) from a
+    pre-fairness-fix, pre-curvature-aware-k, 7-scenario prior study
+    (archive/simulation/results_legacy/velocity_augmented_main_benchmark_20260717/).
+    Re-selected under the current protocol: swept {0,0.1,0.25,0.5,1.0,2.0} (same grid as
+    that prior study) on TUNING SEEDS ONLY, pooled over all 9 scenarios via the mean of
+    log(clean_point_rmse_rel) + log(distance_to_manifold_rel) + log(velocity_rmse_loc_rel)
+    + log(joint_euler_state_rmse_rel) -- i.e. position + *location-anchored* (not
+    identity-anchored) velocity + joint flow, matching the report's own headline metric
+    set. The naive pooled argmin (2.0) and lambda_v=1.0 score within ~1% of each other,
+    but 1.0 captures essentially all of 2.0's velocity-metric gain on the one
+    non-monotonic scenario (Swiss Roll) while avoiding its clean_point_rmse/distance-to-
+    manifold regression there (2.0 makes Swiss Roll's position accuracy worse than the
+    lambda_v=0 baseline; 1.0 does not) -- a Pareto-efficiency argument, not merely a
+    safeguard technicality. Final seeds never entered this selection.
+  tuning: >-
+    once-for-all grid search over T in {3,5,8} x eta_g in {0.35,0.5,0.7} x kappa in {0,1,2}
+    x theta in {0.02,0.05,0.1} x theta_schedule in {flat,ramp} (162 candidates), scored by
+    mean tuning_score pooled over all 9 scenarios x 3 tuning seeds (see parameter_rules.md
+    section 3). k excluded from this grid -- supplied per scenario below.
+
+# ---------------------------------------------------------------------------
+# Shared k(n,d) neighborhood rule (Cosine Kernel / Local PCA / Position-only MANFIT / ManfitVelo)
+# See parameter_rules.md section 2 for the two-stage formula + curvature-aware refinement.
+# ---------------------------------------------------------------------------
+neighbor_count_rule:
+  base_formula: "k(n,d) = clip(ceil(C * n^(4/(d+4))), 10, 200)"
+  C: 0.60  # single scalar, dimension-independent (P0.1, 2026-08-12) -- superseded the
+           # old per-dimension C_d dict; selected via a 5-candidate {0.30,0.45,0.60,
+           # 0.75,0.90} tuning-seed sweep, see parameter_rules.md section 2
+  clip: [10, 200]
+  curvature_refinement: >-
+    sweep k up to the base-formula ceiling; measure population-mean normal-direction
+    local-PCA residual (no ground truth) at each k; pick the k right after the
+    log-log(residual) vs log(k) slope minimum -- see benchmark_core.curvature_aware_neighbor_count
+  curvature_refinement_uses_final_seeds: false
+  scenario_specific_exception: false  # applies identically to every scenario, including Hairpin
+
+shared_graph_k:
+  circle: 30
+  s_curve: 41
+  curved_hairpin: 14
+  flat_rotation_annulus: 34
+  half_sphere_tangent: 21
+  y_branch: 28
+  near_intersection: 14
+  swiss_roll: 16
+  saddle_surface: 26
+
+# ---------------------------------------------------------------------------
+# Provenance
+# ---------------------------------------------------------------------------
+selection_uses_final_seeds: false
+tuning_seeds: [42000, 42001, 42002]
+final_seeds: [43000, 43001, 43002, 43003, 43004, 43005, 43006, 43007, 43008, 43009, 43010, 43011, 43012, 43013, 43014]
+tuning_budget:
+  shared_vmf_candidates: 162
+  shared_position_only_candidates: 9
+  graphvelo_candidates: 0

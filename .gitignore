@@ -9,3 +9,10 @@ data/neural_nlb/
 !simulation/data/
 simulation/data/*
 !simulation/data/.gitignore
+
+# Generated outputs and retired/superseded code+result snapshots -- not part
+# of the delivered repo (2026-08-12 repo cleanup). See README.md.
+/archive/
+/results/
+.pytest_cache/
+.Rhistory

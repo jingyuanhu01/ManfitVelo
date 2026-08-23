@@ -1,0 +1,25 @@
+# This subdirectory is published as a focused downstream package.  Keep the
+# research scratch files and generated reports in the working tree, but only
+# expose the reviewed collaborator-facing files below.
+*
+
+!.gitignore
+!README.md
+!requirements.txt
+
+!intrinsic_jacobian.py
+!connection_smoothing.py
+!downstream_geometry.py
+
+!fucci_intrinsic_jacobian.ipynb
+!cell_cycle_intrinsic_jacobian.ipynb
+!prepare_fucci_data.py
+
+!datasets/
+!datasets/**
+datasets/**/raw/
+datasets/**/.DS_Store
+
+!reports/
+reports/*
+!reports/fucci_data_acquisition.md

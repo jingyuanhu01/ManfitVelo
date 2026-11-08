@@ -1,7 +1,7 @@
 # VelocityManifoldFitter API
 
 This page mirrors the Sphinx-style documentation in
-`scripts/velocity_manifold_fitter.py`.
+`src/manfitvelo/velocity_manifold_fitter.py`.
 
 ## Class
 

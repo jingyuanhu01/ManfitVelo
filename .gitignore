@@ -1,18 +1,9 @@
-.DS_Store
 __pycache__/
 *.py[cod]
-.ipynb_checkpoints/
-outputs/
-docs/_build/
-data/
-data/neural_nlb/
-!simulation/data/
-simulation/data/*
-!simulation/data/.gitignore
-
-# Generated outputs and retired/superseded code+result snapshots -- not part
-# of the delivered repo (2026-08-12 repo cleanup). See README.md.
-/archive/
-/results/
+*.egg-info/
+.venv/
 .pytest_cache/
-.Rhistory
+build/
+dist/
+docs/_build/
+.DS_Store

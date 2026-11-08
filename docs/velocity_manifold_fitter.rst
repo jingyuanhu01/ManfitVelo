@@ -1,7 +1,7 @@
 Velocity Manifold Fitter
 ========================
 
-.. automodule:: scripts.velocity_manifold_fitter
+.. automodule:: manfitvelo.velocity_manifold_fitter
    :members:
    :undoc-members:
    :show-inheritance:
